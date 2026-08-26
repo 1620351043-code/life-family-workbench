@@ -231,7 +231,7 @@ npm run production:preflight
 | A-002 | 审查 `.gitignore` | `DONE` | 已忽略 `.env`、生成输出、Python 缓存、本地数据和数据库文件；staged 清单未包含敏感数据、真实账单或构建产物 |
 | A-003 | 建立分支和提交规范 | `DONE` | 仓库规范已由提交 `18051e0` 落地，公开远端 `origin` 已绑定并推送 `main`；Squash merge、关闭普通 Merge/Rebase、合并后删除分支已配置；`main` Branch Protection 已启用，要求 `quality-gate`、1 名独立审查者、线性历史和解决审查对话 |
 | A-004 | 建立 CI | `DONE` | GitHub Actions `quality-gate` 已由提交 `e5a598e` 落地；远端运行 `32972907305`（提交 `f8085ed`）全绿，`npm ci`、类型检查、API 14/14、OpenAPI、迁移 smoke 和 Web 构建均通过 |
-| A-005 | 建立版本号和发布 Tag | `NOT_STARTED` | staging/production 发布可追溯到唯一 commit |
+| A-005 | 建立版本号和发布 Tag | `PARTIAL` | `RELEASE.md`、`release:check` 和 Tag 触发 CI 已在 `codex/release-tag-policy` 分支完成；稳定 Tag/RC Tag 正例与错误反例已验证；待 Pull Request 审查合并，当前不创建正式发布 Tag |
 | A-006 | 建立回滚清单 | `NOT_STARTED` | 前端、API、迁移和 worker 均有回滚步骤 |
 
 ### 7.2 B：认证、账户和家庭
@@ -404,7 +404,7 @@ npm run production:preflight
 - [x] `A-001` 首次 Git 提交
 - [x] `A-002` `.gitignore` 和敏感文件审查
 - [x] `A-004` CI
-- [ ] `A-005` 版本与 Tag 规则
+- [ ] `A-005` 版本与 Tag 规则（规则已在功能分支，待 Pull Request 合并）
 - [ ] `A-006` 回滚清单
 
 阶段出口：任何变更都可追踪、可测试、可回滚。
@@ -576,7 +576,7 @@ npm run production:preflight
 
 下一轮默认从以下任务开始，除非用户明确调整优先级：
 
-1. `A-005`：建立版本号和 staging/production 发布 Tag 规则。
+1. `A-005`：审查并合并版本号和 staging/production 发布 Tag 规则 Pull Request。
 2. `A-006`：建立前端、API、迁移和 worker 回滚清单。
 3. `B-004`、`B-005`：完成移动端登录和注册/创建家庭垂直切片。
 4. `B-011`：建立正式身份移动端 E2E，替换当前仅无权限态的财务截图证据。
@@ -626,3 +626,4 @@ npm run production:preflight
 | v0.4 | 2026-08-26 | 完成 A-004 GitHub Actions `quality-gate` workflow 和本地 CI 等价验证；因当前无 remote，远端触发和 required check 验证保留为未关闭项 | A-004 `PARTIAL` |
 | v0.5 | 2026-08-26 | 绑定 GitHub 私有远端并推送 `main`；修复 PGlite CI 临时路径问题；远端 `quality-gate` 运行 `32972907305` 全绿；配置合并策略；分支强制保护因 GitHub 计划限制保留为未关闭项 | A-004 `DONE`，A-003 `PARTIAL` |
 | v0.6 | 2026-08-26 | 经用户授权将仓库公开；确认远端无真实账单、私有文件或密钥；完成 `main` Branch Protection 配置并要求 `quality-gate`、独立审查和线性历史 | A-003、A-004 `DONE` |
+| v0.7 | 2026-08-26 | 在 `codex/release-tag-policy` 分支建立 SemVer、staging RC、production 稳定 Tag、版本校验和 Tag CI 触发规则；本地质量闸门和正反例验证通过 | A-005 `PARTIAL`，待 Pull Request |

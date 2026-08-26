@@ -11,6 +11,7 @@
 - 产品基线和当前工程状态：`PROJECT_BASELINE.md`
 - 分支、提交、审查和合并规范：`CONTRIBUTING.md`
 - `main` 主分支保护配置：`.github/BRANCH_PROTECTION.md`
+- 版本号、staging/production Tag 和发布追溯规则：`RELEASE.md`
 - 财务生产发布闸门复审：`outputs/Life-财务生产发布闸门复审报告-v0.4.md`
 - API 契约：`api/Life-家庭生活工作台-OpenAPI-v0.1.yaml`
 - 数据库迁移：`db/migrations/`
@@ -24,6 +25,7 @@ npm run api:typecheck
 npm run api:test
 npm run openapi:validate
 npm run migration:smoke
+npm run release:check -- --tag=v0.1.0 --env=production
 npm run web:typecheck
 npm run web:build
 npm run web:visual-regression
