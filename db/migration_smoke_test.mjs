@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises';
 
-const modulePath = process.env.PGLITE_MODULE || '/private/tmp/life-pglite/node_modules/@electric-sql/pglite/dist/index.js';
+const modulePath = process.env.PGLITE_MODULE || '@electric-sql/pglite';
 const { PGlite } = await import(modulePath);
 const db = new PGlite();
 
