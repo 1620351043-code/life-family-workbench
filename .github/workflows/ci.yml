@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: API typecheck
+        run: npm run api:typecheck
+
+      - name: Web typecheck
+        run: npm run web:typecheck
+
+      - name: API tests
+        run: npm run api:test
+
+      - name: OpenAPI validation
+        run: npm run openapi:validate
+
+      - name: Migration smoke test
+        run: npm run migration:smoke
+
+      - name: Web production build
+        run: npm run web:build

@@ -14,15 +14,21 @@
 
 ## Required status checks
 
-A-004 CI 建设完成后，至少将以下任务设为 required：
+A-004 CI 建设完成后，至少将 `quality-gate` 这个 GitHub Actions job 设为 required。它内部必须完整运行以下检查：
 
 ```text
-api:typecheck
-web:typecheck
-api:test
-openapi:validate
-migration:smoke
-web:build
+quality-gate
+```
+
+`quality-gate` 内部的检查命令为：
+
+```text
+npm run api:typecheck
+npm run web:typecheck
+npm run api:test
+npm run openapi:validate
+npm run migration:smoke
+npm run web:build
 ```
 
 专项变更按 Pull Request 增加对应检查，例如财务真实账单回放、移动端 smoke、视觉回归和安全扫描。

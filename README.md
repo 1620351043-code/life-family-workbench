@@ -23,7 +23,7 @@
 npm run api:typecheck
 npm run api:test
 npm run openapi:validate
-node db/migration_smoke_test.mjs
+npm run migration:smoke
 npm run web:typecheck
 npm run web:build
 npm run web:visual-regression
