@@ -9,6 +9,7 @@
     "api:typecheck": "tsc --noEmit",
     "openapi:validate": "node scripts/validate-openapi.mjs",
     "migration:smoke": "node db/migration_smoke_test.mjs",
+    "release:check": "node scripts/validate-release-tag.mjs",
     "cos:live-smoke": "NODE_ENV=production LIFE_COS_LIVE_SMOKE=true tsx scripts/production_preflight.ts",
     "db:migrate": "tsx scripts/migrate_postgres.ts",
     "production:preflight": "tsx scripts/production_preflight.ts",
