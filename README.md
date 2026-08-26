@@ -9,6 +9,8 @@
 - 页面垂直切片实施和验收标准：`outputs/Life-页面垂直切片实施与验收流程-v0.1.md`
 - 总体 UI 设计系统：`outputs/Life-移动端总体UI设计系统-v0.1.md`
 - 产品基线和当前工程状态：`PROJECT_BASELINE.md`
+- 分支、提交、审查和合并规范：`CONTRIBUTING.md`
+- `main` 主分支保护配置：`.github/BRANCH_PROTECTION.md`
 - 财务生产发布闸门复审：`outputs/Life-财务生产发布闸门复审报告-v0.4.md`
 - API 契约：`api/Life-家庭生活工作台-OpenAPI-v0.1.yaml`
 - 数据库迁移：`db/migrations/`
