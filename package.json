@@ -1,0 +1,48 @@
+{
+  "name": "life-family-workbench",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "api:dev": "tsx src/api/server.ts",
+    "api:test": "vitest run",
+    "api:typecheck": "tsc --noEmit",
+    "openapi:validate": "node scripts/validate-openapi.mjs",
+    "cos:live-smoke": "NODE_ENV=production LIFE_COS_LIVE_SMOKE=true tsx scripts/production_preflight.ts",
+    "db:migrate": "tsx scripts/migrate_postgres.ts",
+    "production:preflight": "tsx scripts/production_preflight.ts",
+    "finance:export-worker": "tsx scripts/finance_export_worker.ts",
+    "finance:retention-worker": "tsx scripts/finance_retention_worker.ts",
+    "web:dev": "vite --config ui/app/vite.config.ts",
+    "web:build": "vite build --config ui/app/vite.config.ts",
+    "web:typecheck": "tsc -p ui/app/tsconfig.json --noEmit",
+    "web:food-smoke": "node scripts/food_vertical_slice_smoke.mjs",
+    "web:visual-regression": "node scripts/mobile_visual_regression.mjs",
+    "web:screenshot-catalog": "node scripts/ui_screenshot_catalog.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@fastify/cors": "^10.0.2",
+    "cos-nodejs-sdk-v5": "^3.0.0",
+    "fastify": "^5.4.0",
+    "pg": "^8.16.3",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@apidevtools/swagger-parser": "^12.0.1",
+    "@electric-sql/pglite": "^0.5.7",
+    "@types/node": "^22.15.30",
+    "@types/pg": "^8.15.4",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.5",
+    "@vitejs/plugin-react": "^5.2.0",
+    "tsx": "^4.20.3",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.4",
+    "yaml": "^2.8.0"
+  }
+}

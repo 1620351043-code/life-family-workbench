@@ -1,0 +1,1087 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Life 移动端低保真</title>
+</head>
+<body>
+<div id="life-lowfi">
+  <style>
+    #life-lowfi {
+      --life-bg-lavender: #f7f0fc;
+      --life-bg-blush: #fff3f0;
+      --life-bg: linear-gradient(145deg, var(--life-bg-lavender) 0%, #f4effd 48%, var(--life-bg-blush) 100%);
+      --life-surface: rgba(255, 255, 255, .62);
+      --life-surface-strong: rgba(255, 255, 255, .78);
+      --life-surface-soft: rgba(255, 255, 255, .42);
+      --life-text: #202044;
+      --life-muted: #77779a;
+      --life-line: rgba(255, 255, 255, .72);
+      --life-primary: #367cf5;
+      --life-primary-soft: rgba(54, 124, 245, .12);
+      --life-warning: #b06a26;
+      --life-danger: #d95771;
+      --life-success: #278d76;
+      --life-budget-food: #f46f8d;
+      --life-budget-daily: #f3ad53;
+      --life-budget-transport: #71a9f5;
+      --life-budget-shopping: #9b86e8;
+      --life-budget-learning: #66cdb6;
+      --life-budget-home: #55c6c8;
+      color: var(--life-text);
+      background: var(--life-bg), radial-gradient(circle at 88% 8%, rgba(183, 161, 244, .26), transparent 34%), radial-gradient(circle at 8% 82%, rgba(247, 172, 194, .2), transparent 32%);
+      font: 400 15px/1.5 -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+      min-height: 100%;
+    }
+
+    #life-lowfi *,
+    #life-lowfi *::before,
+    #life-lowfi *::after {
+      box-sizing: border-box;
+    }
+
+    #life-lowfi button,
+    #life-lowfi input,
+    #life-lowfi select {
+      font: inherit;
+    }
+
+    #life-lowfi button {
+      color: inherit;
+    }
+
+    #life-lowfi .life-shell {
+      width: min(100%, 430px);
+      min-height: 760px;
+      margin: 0 auto;
+      background: transparent;
+      display: flex;
+      flex-direction: column;
+    }
+
+    #life-lowfi .life-header {
+      padding: 24px 18px 12px;
+      background: rgba(255, 255, 255, .2);
+      border-bottom: 1px solid rgba(255, 255, 255, .45);
+      backdrop-filter: blur(24px) saturate(130%);
+      -webkit-backdrop-filter: blur(24px) saturate(130%);
+    }
+
+    #life-lowfi .life-brand-line,
+    #life-lowfi .life-title-line,
+    #life-lowfi .life-panel-head,
+    #life-lowfi .life-row,
+    #life-lowfi .life-nav,
+    #life-lowfi .life-actions,
+    #life-lowfi .life-field-line {
+      display: flex;
+      align-items: center;
+    }
+
+    #life-lowfi .life-brand-line {
+      justify-content: flex-start;
+      gap: 12px;
+    }
+
+    #life-lowfi .life-mascot {
+      display: grid;
+      place-items: center;
+      width: 46px;
+      height: 46px;
+      flex: 0 0 auto;
+      border: 1px solid rgba(255, 255, 255, .8);
+      border-radius: 50%;
+      background: linear-gradient(145deg, rgba(255, 255, 255, .82), rgba(222, 207, 255, .52));
+      box-shadow: 0 8px 18px rgba(102, 77, 166, .12);
+      font-size: 25px;
+    }
+
+    #life-lowfi .life-brand {
+      font-size: 22px;
+      font-weight: 600;
+      letter-spacing: .02em;
+    }
+
+    #life-lowfi .life-scope {
+      color: var(--life-muted);
+      font-size: 12px;
+      margin-top: 2px;
+    }
+
+    #life-lowfi .life-icon-button,
+    #life-lowfi .life-text-button,
+    #life-lowfi .life-tab,
+    #life-lowfi .life-bottom-button,
+    #life-lowfi .life-link-button,
+    #life-lowfi .life-row-button,
+    #life-lowfi .life-ring,
+    #life-lowfi .life-chart-hit {
+      appearance: none;
+      border: 0;
+      background: transparent;
+      cursor: pointer;
+    }
+
+    #life-lowfi .life-icon-button {
+      width: 36px;
+      height: 36px;
+      margin-left: auto;
+      border: 1px solid var(--life-line);
+      border-radius: 10px;
+      background: rgba(255, 255, 255, .58);
+    }
+
+    #life-lowfi .life-main {
+      flex: 1;
+      padding: 14px 14px 96px;
+    }
+
+    #life-lowfi .life-page-title {
+      margin: 0;
+      font-size: 22px;
+      line-height: 1.25;
+      font-weight: 500;
+    }
+
+    #life-lowfi .life-page-subtitle {
+      color: var(--life-muted);
+      font-size: 13px;
+      margin: 5px 0 0;
+    }
+
+    #life-lowfi .life-panel {
+      margin-top: 14px;
+      background: var(--life-surface);
+      border: 1px solid var(--life-line);
+      border-radius: 24px;
+      padding: 16px;
+      box-shadow: 0 12px 30px rgba(112, 83, 166, .08);
+      backdrop-filter: blur(24px) saturate(120%);
+      -webkit-backdrop-filter: blur(24px) saturate(120%);
+    }
+
+    #life-lowfi .life-panel-head {
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+
+    #life-lowfi .life-panel-title {
+      margin: 0;
+      font-size: 15px;
+      font-weight: 500;
+    }
+
+    #life-lowfi .life-muted {
+      color: var(--life-muted);
+      font-size: 12px;
+    }
+
+    #life-lowfi .life-primary-button,
+    #life-lowfi .life-secondary-button,
+    #life-lowfi .life-danger-button {
+      appearance: none;
+      border-radius: 9px;
+      padding: 10px 13px;
+      cursor: pointer;
+      font-weight: 500;
+    }
+
+    #life-lowfi .life-primary-button {
+      border: 1px solid var(--life-primary);
+      color: #fff;
+      background: linear-gradient(135deg, #4389ff, #6f69ec);
+      box-shadow: 0 7px 16px rgba(54, 124, 245, .22);
+    }
+
+    #life-lowfi .life-secondary-button {
+      border: 1px solid var(--life-line);
+      color: var(--life-text);
+      background: rgba(255, 255, 255, .55);
+    }
+
+    #life-lowfi .life-danger-button {
+      border: 1px solid #e4a2a2;
+      color: var(--life-danger);
+      background: #fff7f7;
+    }
+
+    #life-lowfi .life-actions {
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    #life-lowfi .life-summary-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+    }
+
+    #life-lowfi .life-summary {
+      min-width: 0;
+      padding: 11px 9px;
+      border: 1px solid var(--life-line);
+      border-radius: 10px;
+      background: var(--life-surface-soft);
+    }
+
+    #life-lowfi .life-summary-label {
+      color: var(--life-muted);
+      font-size: 11px;
+    }
+
+    #life-lowfi .life-summary-value {
+      display: block;
+      margin-top: 4px;
+      font-size: 17px;
+      font-weight: 500;
+      overflow-wrap: anywhere;
+    }
+
+    #life-lowfi .life-summary-value.life-negative {
+      color: var(--life-danger);
+    }
+
+    #life-lowfi .life-budget-visual {
+      position: relative;
+      width: min(100%, 252px);
+      aspect-ratio: 1;
+      margin: -6px auto 2px;
+    }
+
+    #life-lowfi .life-budget-visual svg {
+      width: 100%;
+      height: 100%;
+      overflow: visible;
+      transform: rotate(-90deg);
+    }
+
+    #life-lowfi .life-budget-track,
+    #life-lowfi .life-budget-progress {
+      fill: none;
+      stroke-linecap: round;
+    }
+
+    #life-lowfi .life-budget-track {
+      stroke-width: 11;
+    }
+
+    #life-lowfi .life-budget-progress {
+      stroke-width: 11;
+      filter: drop-shadow(0 2px 3px rgba(90, 68, 142, .12));
+    }
+
+    #life-lowfi .life-budget-center {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-content: center;
+      justify-items: center;
+      text-align: center;
+      width: 100%;
+      border: 0;
+      border-radius: 50%;
+      color: var(--life-text);
+      background: transparent;
+      cursor: pointer;
+      pointer-events: auto;
+    }
+
+    #life-lowfi .life-budget-center-label {
+      color: var(--life-muted);
+      font-size: 13px;
+    }
+
+    #life-lowfi .life-budget-center-total {
+      margin: 2px 0;
+      font-size: clamp(30px, 9vw, 42px);
+      line-height: 1.08;
+      letter-spacing: -.04em;
+      font-weight: 650;
+    }
+
+    #life-lowfi .life-budget-center-meta {
+      color: var(--life-muted);
+      font-size: 12px;
+    }
+
+    #life-lowfi .life-budget-center-meta strong {
+      color: var(--life-primary);
+      font-weight: 600;
+    }
+
+    #life-lowfi .life-budget-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 7px;
+      margin-top: 8px;
+    }
+
+    #life-lowfi .life-budget-item {
+      appearance: none;
+      min-width: 0;
+      min-height: 54px;
+      display: grid;
+      grid-template-columns: 10px minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 9px;
+      border: 1px solid rgba(255, 255, 255, .78);
+      border-radius: 16px;
+      color: var(--life-text);
+      background: rgba(255, 255, 255, .54);
+      text-align: left;
+      cursor: pointer;
+      box-shadow: 0 5px 14px rgba(100, 80, 153, .05);
+    }
+
+    #life-lowfi .life-budget-item:hover {
+      background: rgba(255, 255, 255, .78);
+    }
+
+    #life-lowfi .life-budget-item:focus-visible,
+    #life-lowfi .life-chart-hit:focus-visible,
+    #life-lowfi button:focus-visible {
+      outline: 3px solid #a8c3ff;
+      outline-offset: 2px;
+    }
+
+    #life-lowfi .life-budget-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--budget-accent);
+      box-shadow: 0 0 0 4px color-mix(in srgb, var(--budget-accent) 16%, transparent);
+    }
+
+    #life-lowfi .life-budget-main {
+      min-width: 0;
+    }
+
+    #life-lowfi .life-budget-label {
+      display: block;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    #life-lowfi .life-budget-amount {
+      display: block;
+      margin-top: 2px;
+      overflow: hidden;
+      color: var(--life-muted);
+      font-size: 11px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    #life-lowfi .life-budget-progress-pill {
+      flex: 0 0 auto;
+      padding: 3px 6px;
+      border-radius: 9px;
+      color: var(--budget-accent);
+      background: color-mix(in srgb, var(--budget-accent) 14%, white);
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    #life-lowfi .life-budget-chevron {
+      color: var(--life-muted);
+      font-size: 18px;
+      line-height: 1;
+    }
+
+    #life-lowfi .life-budget-more {
+      grid-column: 1 / -1;
+      justify-content: center;
+      color: var(--life-primary);
+      font-weight: 600;
+    }
+
+    #life-lowfi .life-budget-over {
+      --budget-accent: var(--life-danger) !important;
+    }
+
+    #life-lowfi .life-budget-note {
+      margin: 10px 0 0;
+      color: var(--life-muted);
+      font-size: 11px;
+    }
+
+    #life-lowfi .life-chart {
+      position: relative;
+      height: 148px;
+      border: 1px solid rgba(255, 255, 255, .74);
+      border-radius: 10px;
+      background: rgba(255, 255, 255, .42);
+      overflow: hidden;
+    }
+
+    #life-lowfi .life-chart svg {
+      width: 100%;
+      height: 100%;
+    }
+
+    #life-lowfi .life-chart-grid {
+      stroke: rgba(119, 119, 154, .16);
+      stroke-width: 1;
+    }
+
+    #life-lowfi .life-chart-line-income {
+      fill: none;
+      stroke: #2f8b63;
+      stroke-width: 2.5;
+    }
+
+    #life-lowfi .life-chart-line-expense {
+      fill: none;
+      stroke: var(--life-primary);
+      stroke-width: 2.5;
+    }
+
+    #life-lowfi .life-chart-hit {
+      position: absolute;
+      top: 0;
+      width: 32px;
+      height: 100%;
+      transform: translateX(-50%);
+    }
+
+    #life-lowfi .life-chart-hit::after {
+      content: "";
+      position: absolute;
+      top: 48%;
+      left: 50%;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      border: 2px solid var(--life-surface);
+      background: var(--life-primary);
+      box-shadow: 0 0 0 2px var(--life-primary);
+    }
+
+    #life-lowfi .life-legend {
+      display: flex;
+      gap: 14px;
+      margin-top: 8px;
+      color: var(--life-muted);
+      font-size: 12px;
+    }
+
+    #life-lowfi .life-legend span::before {
+      content: "";
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      margin-right: 5px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+
+    #life-lowfi .life-legend-income {
+      color: #2f8b63;
+    }
+
+    #life-lowfi .life-legend-expense {
+      color: var(--life-primary);
+    }
+
+    #life-lowfi .life-drill-panel {
+      border-left: 3px solid var(--life-primary);
+      background: var(--life-primary-soft);
+    }
+
+    #life-lowfi .life-drill-title {
+      margin: 0;
+      font-size: 14px;
+      font-weight: 500;
+    }
+
+    #life-lowfi .life-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    #life-lowfi .life-row-button,
+    #life-lowfi .life-row {
+      width: 100%;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--life-line);
+      text-align: left;
+    }
+
+    #life-lowfi .life-row-button:last-child,
+    #life-lowfi .life-row:last-child {
+      border-bottom: 0;
+      padding-bottom: 0;
+    }
+
+    #life-lowfi .life-row-button:first-child,
+    #life-lowfi .life-row:first-child {
+      padding-top: 0;
+    }
+
+    #life-lowfi .life-row-main {
+      min-width: 0;
+    }
+
+    #life-lowfi .life-row-title {
+      display: block;
+      font-weight: 500;
+    }
+
+    #life-lowfi .life-row-meta {
+      display: block;
+      color: var(--life-muted);
+      font-size: 12px;
+      margin-top: 2px;
+    }
+
+    #life-lowfi .life-row-value {
+      flex: 0 0 auto;
+      text-align: right;
+      font-weight: 500;
+    }
+
+    #life-lowfi .life-import-file {
+      padding: 10px 0;
+      border-bottom: 1px solid var(--life-line);
+    }
+
+    #life-lowfi .life-import-file:last-child {
+      border-bottom: 0;
+    }
+
+    #life-lowfi .life-import-status {
+      color: var(--life-success);
+      font-size: 12px;
+    }
+
+    #life-lowfi .life-stepper {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 4px;
+      margin: 14px 0;
+    }
+
+    #life-lowfi .life-step {
+      padding-top: 7px;
+      border-top: 2px solid var(--life-line);
+      color: var(--life-muted);
+      font-size: 11px;
+    }
+
+    #life-lowfi .life-step.is-current {
+      color: var(--life-primary);
+      border-color: var(--life-primary);
+      font-weight: 500;
+    }
+
+    #life-lowfi .life-topic-type,
+    #life-lowfi .life-status {
+      display: inline-block;
+      padding: 3px 7px;
+      border: 1px solid var(--life-line);
+      border-radius: 6px;
+      color: var(--life-muted);
+      font-size: 11px;
+      background: var(--life-surface-soft);
+    }
+
+    #life-lowfi .life-food-card {
+      display: grid;
+      grid-template-columns: 72px 1fr;
+      gap: 12px;
+      align-items: center;
+      width: 100%;
+      padding: 12px 0;
+      border: 0;
+      border-bottom: 1px solid var(--life-line);
+      background: transparent;
+      text-align: left;
+      cursor: pointer;
+    }
+
+    #life-lowfi .life-food-card:last-child {
+      border-bottom: 0;
+    }
+
+    #life-lowfi .life-food-image {
+      width: 72px;
+      height: 72px;
+      display: grid;
+      place-items: center;
+      border: 1px solid var(--life-line);
+      border-radius: 10px;
+      background: #edf1f4;
+      color: var(--life-muted);
+      font-size: 11px;
+    }
+
+    #life-lowfi .life-check-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    #life-lowfi .life-check {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 9px 0;
+      border-bottom: 1px solid var(--life-line);
+    }
+
+    #life-lowfi .life-check:last-child {
+      border-bottom: 0;
+    }
+
+    #life-lowfi .life-bottom-nav {
+      position: fixed;
+      right: 0;
+      bottom: 0;
+      left: 0;
+      z-index: 5;
+      display: flex;
+      justify-content: center;
+      background: transparent;
+      pointer-events: none;
+    }
+
+    #life-lowfi .life-nav {
+      width: min(100%, 430px);
+      margin: 0 10px 8px;
+      padding: 7px 8px calc(7px + env(safe-area-inset-bottom));
+      gap: 3px;
+      border: 1px solid rgba(255, 255, 255, .82);
+      border-radius: 24px;
+      background: rgba(255, 255, 255, .58);
+      box-shadow: 0 10px 24px rgba(102, 78, 156, .14);
+      backdrop-filter: blur(24px) saturate(130%);
+      -webkit-backdrop-filter: blur(24px) saturate(130%);
+      pointer-events: auto;
+    }
+
+    #life-lowfi .life-bottom-button {
+      flex: 1;
+      min-height: 44px;
+      padding: 7px 2px;
+      border-radius: 17px;
+      color: var(--life-muted);
+      font-size: 11px;
+    }
+
+    #life-lowfi .life-bottom-button[aria-current="page"] {
+      color: var(--life-primary);
+      font-weight: 500;
+      background: rgba(255, 255, 255, .82);
+      box-shadow: 0 4px 12px rgba(54, 124, 245, .1);
+    }
+
+    #life-lowfi .life-note {
+      color: var(--life-muted);
+      font-size: 12px;
+      margin: 10px 0 0;
+    }
+
+    #life-lowfi .life-alert {
+      padding: 10px 12px;
+      border: 1px solid #e7c79d;
+      border-radius: 9px;
+      color: var(--life-warning);
+      background: #fffaf2;
+      font-size: 12px;
+    }
+
+    @media (min-width: 431px) {
+      #life-lowfi .life-shell {
+        border-right: 1px solid rgba(255, 255, 255, .48);
+        border-left: 1px solid rgba(255, 255, 255, .48);
+      }
+    }
+
+    @media (max-width: 360px) {
+      #life-lowfi .life-budget-item {
+        grid-template-columns: 8px minmax(0, 1fr) auto;
+        gap: 6px;
+        padding: 8px;
+      }
+
+      #life-lowfi .life-budget-label {
+        font-size: 12px;
+      }
+
+      #life-lowfi .life-budget-amount,
+      #life-lowfi .life-budget-progress-pill {
+        font-size: 10px;
+      }
+    }
+
+    @media (prefers-reduced-transparency: reduce) {
+      #life-lowfi .life-panel,
+      #life-lowfi .life-nav,
+      #life-lowfi .life-budget-item {
+        background: #fff8fb;
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+      }
+    }
+  </style>
+
+  <div class="life-shell">
+    <header class="life-header">
+      <div class="life-brand-line">
+        <div class="life-mascot" aria-hidden="true">🐰</div>
+        <div>
+          <div class="life-brand">Life</div>
+          <div class="life-scope">家庭生活工作台 · 我的家庭</div>
+        </div>
+        <button class="life-icon-button" type="button" data-action="scope-info" aria-label="查看家庭隔离说明">i</button>
+      </div>
+    </header>
+
+    <main class="life-main" id="life-main" aria-live="polite"></main>
+
+    <div class="life-bottom-nav">
+      <nav class="life-nav" aria-label="底部导航">
+        <button class="life-bottom-button" type="button" data-route="home" aria-current="false">空间</button>
+        <button class="life-bottom-button" type="button" data-route="food" aria-current="false">吃什么</button>
+        <button class="life-bottom-button" type="button" data-route="finance" aria-current="page">财务</button>
+        <button class="life-bottom-button" type="button" data-route="more" aria-current="false">更多</button>
+      </nav>
+    </div>
+  </div>
+
+  <script>
+    (() => {
+      const root = document.getElementById("life-lowfi");
+      const main = document.getElementById("life-main");
+      const state = { route: "finance", drilldown: null };
+
+      let financeData = {
+        summaries: [
+          { label: "收入", value: "10,200", kind: "收入趋势" },
+          { label: "支出", value: "376", kind: "支出趋势" },
+          { label: "净现金流", value: "9,824", kind: "周期明细" }
+        ],
+        budgets: [
+          { label: "餐饮", used: "1,560", limit: "2,000", progress: 78, colorToken: "food", detail: ["家庭餐饮", "12 笔支出", "预算分类：餐饮"] },
+          { label: "日常生活", used: "1,240", limit: "1,800", progress: 69, colorToken: "daily", detail: ["日常生活", "9 笔支出", "预算分类：日常生活"] },
+          { label: "交通", used: "860", limit: "1,200", progress: 72, colorToken: "transport", detail: ["交通", "6 笔支出", "预算分类：交通"] },
+          { label: "购物", used: "1,080", limit: "1,500", progress: 72, colorToken: "shopping", detail: ["购物", "7 笔支出", "预算分类：购物"] },
+          { label: "学习", used: "520", limit: "1,500", progress: 35, colorToken: "learning", detail: ["学习", "2 笔支出", "预算分类：学习"] },
+          { label: "居家", used: "740", limit: "1,200", progress: 62, colorToken: "home", detail: ["居家", "4 笔支出", "预算分类：居家"] }
+        ],
+        trend: [
+          { label: "08-01", x: 15, income: 40, expense: 24, detail: ["08-01", "收入 10,000", "支出 68"] },
+          { label: "08-02", x: 37, income: 58, expense: 31, detail: ["08-02", "收入 0", "支出 0"] },
+          { label: "08-03", x: 59, income: 42, expense: 58, detail: ["08-03", "收入 0", "支出 120"] },
+          { label: "08-04", x: 81, income: 70, expense: 76, detail: ["08-04", "收入 0", "支出 188"] }
+        ],
+        assets: [
+          { label: "购买", value: "3,000", detail: ["实物资产购买事件", "进入资产事件明细", "来源：账本"] },
+          { label: "维护", value: "200", detail: ["实物资产维护事件", "进入资产事件明细", "来源：账本"] },
+          { label: "净成本", value: "2,700", detail: ["累计毛成本 3,200", "回收金额 500", "进入净现金成本明细"] }
+        ]
+      };
+
+      function escapeHtml(value) {
+        return String(value).replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]));
+      }
+
+      function adaptFinanceOverview(payload) {
+        const summaries = payload.summary_cards.map((item) => ({
+          kind: item.key,
+          label: item.key === "income" ? "收入" : item.key === "expense" ? "支出" : "净现金流",
+          value: Number(item.value).toLocaleString("zh-CN", { maximumFractionDigits: 2 }),
+          ref: item.drilldown_ref,
+        }));
+        const colorByToken = { orange: "food", pink: "food", blue: "transport", green: "learning", purple: "shopping", teal: "home" };
+        const budgets = payload.budget_rings.map((item) => ({
+          label: item.label,
+          used: Number(item.used).toLocaleString("zh-CN", { maximumFractionDigits: 2 }),
+          limit: Number(item.limit).toLocaleString("zh-CN", { maximumFractionDigits: 2 }),
+          progress: Math.round(item.progress),
+          colorToken: colorByToken[item.color_token] || "shopping",
+          detail: ["预算分类", item.drilldown_ref.filter_id, "服务端 drilldown_ref"],
+          ref: item.drilldown_ref,
+        }));
+        const trend = payload.trend_points.map((item, index) => ({
+          label: item.bucket,
+          x: [15, 37, 59, 81][index] || 90,
+          income: Number(item.income),
+          expense: Number(item.expense),
+          detail: [item.bucket, "收入 " + item.income, "支出 " + item.expense],
+          ref: item.drilldown_ref,
+        }));
+        const assets = payload.asset_cost_points.map((item) => ({
+          label: item.bucket,
+          value: Number(item.net_cash_cost).toLocaleString("zh-CN", { maximumFractionDigits: 2 }),
+          detail: ["实物资产成本趋势", item.drilldown_ref.filters.metric || item.drilldown_ref.filters.event_type || "周期", item.drilldown_ref.filter_id],
+          ref: item.drilldown_ref,
+        }));
+        return { summaries, budgets, trend, assets, source: "api" };
+      }
+
+      async function loadFinanceOverview() {
+        try {
+          const response = await fetch("/api/finance/overview", { credentials: "include" });
+          if (!response.ok) return;
+          financeData = adaptFinanceOverview(await response.json());
+          render();
+        } catch (_error) {
+          // 低保真页面在没有 API 服务时使用本地设计预览数据，不代表服务端账本。
+        }
+      }
+
+      const budgetPalette = {
+        food: { accent: "#f46f8d", track: "rgba(244,111,141,.17)" },
+        daily: { accent: "#f3ad53", track: "rgba(243,173,83,.18)" },
+        transport: { accent: "#71a9f5", track: "rgba(113,169,245,.18)" },
+        shopping: { accent: "#9b86e8", track: "rgba(155,134,232,.18)" },
+        learning: { accent: "#66cdb6", track: "rgba(102,205,182,.18)" },
+        home: { accent: "#55c6c8", track: "rgba(85,198,200,.18)" },
+      };
+
+      function amountNumber(value) {
+        return Number(String(value ?? 0).replace(/,/g, "")) || 0;
+      }
+
+      function amountText(value) {
+        return amountNumber(value).toLocaleString("zh-CN", { maximumFractionDigits: 2 });
+      }
+
+      function ringBudgets() {
+        if (financeData.budgets.length <= 6) return financeData.budgets;
+        const primary = financeData.budgets.slice(0, 5);
+        const others = financeData.budgets.slice(5);
+        const used = others.reduce((sum, item) => sum + amountNumber(item.used), 0);
+        const limit = others.reduce((sum, item) => sum + amountNumber(item.limit), 0);
+        return primary.concat([{ label: "其他预算", used, limit, progress: limit ? Math.round(used / limit * 100) : 0, colorToken: "home", detail: ["其他预算", others.length + " 个分类", "查看全部分类"] }]);
+      }
+
+      function budgetVisual() {
+        const visualBudgets = ringBudgets();
+        const center = 180;
+        const outerRadius = 150;
+        const ringThickness = financeData.budgets.length > 6 ? 9 : 11;
+        const ringGap = financeData.budgets.length > 6 ? 5 : 7;
+        const totalBudget = financeData.budgets.reduce((sum, item) => sum + amountNumber(item.limit), 0);
+        const totalUsed = financeData.budgets.reduce((sum, item) => sum + amountNumber(item.used), 0);
+        const overallProgress = totalBudget ? Math.min(999, (totalUsed / totalBudget) * 100) : 0;
+        const rings = visualBudgets.map((item, index) => {
+          const palette = budgetPalette[item.colorToken] || budgetPalette.shopping;
+          const radius = outerRadius - index * (ringThickness + ringGap);
+          const circumference = 2 * Math.PI * radius;
+          const progress = Math.max(0, Math.min(100, Number(item.progress) || 0));
+          const dash = (circumference * progress / 100).toFixed(2);
+          return '<circle class="life-budget-track" cx="' + center + '" cy="' + center + '" r="' + radius + '" style="stroke:' + palette.track + ';stroke-width:' + ringThickness + '"></circle>' +
+            '<circle class="life-budget-progress" cx="' + center + '" cy="' + center + '" r="' + radius + '" style="stroke:' + palette.accent + ';stroke-width:' + ringThickness + '" stroke-dasharray="' + dash + ' ' + circumference.toFixed(2) + '"></circle>';
+        }).join("");
+        return '<div class="life-budget-visual" role="img" aria-label="本月预算多层同心环，显示各分类已用和剩余进度">' +
+          '<svg viewBox="0 0 360 360" aria-hidden="true">' + rings + '</svg>' +
+          '<button class="life-budget-center" type="button" data-action="budget-center" aria-label="查看本月全部预算账单">' +
+          '<span class="life-budget-center-label">本月预算</span>' +
+          '<strong class="life-budget-center-total">¥' + amountText(totalBudget) + '</strong>' +
+          '<span class="life-budget-center-meta">已用 <strong>' + overallProgress.toFixed(1) + '%</strong> · 剩余 ¥' + amountText(Math.max(0, totalBudget - totalUsed)) + '</span>' +
+          '</button></div>';
+      }
+
+      function budgetRow(item) {
+        const palette = budgetPalette[item.colorToken] || budgetPalette.shopping;
+        const over = Number(item.progress) > 100;
+        return '<button class="life-budget-item' + (over ? ' life-budget-over' : '') + '" type="button" style="--budget-accent:' + palette.accent + '" data-action="budget-drill" data-label="' + escapeHtml(item.label) + '" aria-label="查看' + escapeHtml(item.label) + '预算明细">' +
+          '<span class="life-budget-dot" aria-hidden="true"></span>' +
+          '<span class="life-budget-main"><span class="life-budget-label">' + escapeHtml(item.label) + '</span><span class="life-budget-amount">¥' + escapeHtml(amountText(item.used)) + ' / ¥' + escapeHtml(amountText(item.limit)) + '</span></span>' +
+          '<span class="life-budget-progress-pill">' + Math.round(Number(item.progress) || 0) + '%</span><span class="life-budget-chevron" aria-hidden="true">›</span></button>';
+      }
+
+      function trendSvg() {
+        return '<div class="life-chart" role="img" aria-label="收入支出趋势图，点击日期进入账单明细">' +
+          '<svg viewBox="0 0 360 148" preserveAspectRatio="none" aria-hidden="true">' +
+          '<line class="life-chart-grid" x1="20" y1="30" x2="342" y2="30"></line><line class="life-chart-grid" x1="20" y1="74" x2="342" y2="74"></line><line class="life-chart-grid" x1="20" y1="118" x2="342" y2="118"></line>' +
+          '<polyline class="life-chart-line-income" points="20,104 98,88 176,102 254,77"></polyline>' +
+          '<polyline class="life-chart-line-expense" points="20,111 98,106 176,73 254,58"></polyline>' +
+          '</svg>' +
+          financeData.trend.map((point) => '<button class="life-chart-hit" type="button" style="left:' + point.x + '%" data-action="trend-drill" data-label="' + escapeHtml(point.label) + '" aria-label="查看' + escapeHtml(point.label) + '账单明细"></button>').join("") +
+          '</div><div class="life-legend"><span class="life-legend-income">收入</span><span class="life-legend-expense">支出</span></div>';
+      }
+
+      function renderDrilldown() {
+        if (!state.drilldown) return "";
+        return '<section class="life-panel life-drill-panel" aria-label="财务下钻结果">' +
+          '<div class="life-panel-head"><div><h2 class="life-drill-title">' + escapeHtml(state.drilldown.title) + '</h2><div class="life-muted">服务端 drilldown_ref → 明细结果</div></div><button class="life-text-button" type="button" data-action="clear-drill">返回总览</button></div>' +
+          '<div class="life-list">' + state.drilldown.items.map((item) => '<div class="life-row"><div class="life-row-main"><span class="life-row-title">' + escapeHtml(item[0]) + '</span><span class="life-row-meta">' + escapeHtml(item[1]) + '</span></div><span class="life-row-value">' + escapeHtml(item[2]) + '</span></div>').join("") + '</div></section>';
+      }
+
+      function renderFinance() {
+        const assets = financeData.assets.map((item) => '<button class="life-row-button" type="button" data-action="asset-drill" data-label="' + escapeHtml(item.label) + '"><span class="life-row-main"><span class="life-row-title">' + escapeHtml(item.label) + '</span><span class="life-row-meta">实物资产成本趋势</span></span><span class="life-row-value">' + escapeHtml(item.value) + '</span></button>').join("");
+        main.innerHTML = '<h1 class="life-page-title">财务</h1><p class="life-page-subtitle">2026 年 8 月 · 统一账本 · 所有图表均可下钻</p>' +
+          renderDrilldown() +
+          '<section class="life-panel"><div class="life-panel-head"><div><h2 class="life-panel-title">本月预算总览</h2><span class="life-muted">每个同心环对应一个预算分类</span></div><div class="life-actions"><button class="life-link-button" type="button" data-action="budget-center">全部</button><button class="life-link-button" type="button" data-action="import">导入</button></div></div>' + budgetVisual() + '<div class="life-budget-grid">' + financeData.budgets.slice(0, 6).map(budgetRow).join("") + (financeData.budgets.length > 6 ? '<button class="life-budget-item life-budget-more" type="button" data-action="budget-all">查看全部分类</button>' : '') + '</div><p class="life-budget-note">点击圆心、预算环或分类项，进入对应账单明细。</p></section>' +
+          '<section class="life-panel"><div class="life-panel-head"><h2 class="life-panel-title">收入 / 支出趋势</h2><span class="life-muted">按日</span></div>' + trendSvg() + '</section>' +
+          '<section class="life-panel"><div class="life-panel-head"><h2 class="life-panel-title">实物资产成本趋势</h2><button class="life-link-button" type="button" data-action="asset-center">查看全部</button></div><div class="life-list">' + assets + '</div><p class="life-note">毛成本、维护成本、回收金额和净现金成本分别可追溯。</p></section>' +
+          '<section class="life-panel"><div class="life-panel-head"><h2 class="life-panel-title">待处理</h2><span class="life-status">3 个待确认</span></div><div class="life-row"><div class="life-row-main"><span class="life-row-title">跨来源账单关联</span><span class="life-row-meta">银行、支付宝、微信</span></div><button class="life-text-button" type="button" data-action="import">继续处理</button></div></section>';
+      }
+
+      function renderImport() {
+        main.innerHTML = '<div class="life-title-line"><button class="life-text-button" type="button" data-route="finance">‹ 财务</button></div><h1 class="life-page-title">导入账单</h1><p class="life-page-subtitle">先识别表头和字段，再进入重复/关联审核。</p>' +
+          '<section class="life-panel"><div class="life-stepper"><div class="life-step is-current">1 上传</div><div class="life-step is-current">2 识别</div><div class="life-step">3 关联</div><div class="life-step">4 确认</div></div><div class="life-alert">真实样本已验证：银行第 4 行、微信第 18 行、支付宝第 24 行为表头。识别结果必须由用户确认。</div></section>' +
+          '<section class="life-panel"><div class="life-panel-head"><h2 class="life-panel-title">本次来源</h2><span class="life-muted">4 个文件</span></div>' +
+          '<div class="life-import-file"><div class="life-row"><div><b>银行账单</b><div class="life-muted">.xls · 表头第 4 行 · 547 条记录</div></div><span class="life-import-status">已解析</span></div></div>' +
+          '<div class="life-import-file"><div class="life-row"><div><b>微信支付</b><div class="life-muted">.xlsx · 表头第 18 行 · 367 条记录</div></div><span class="life-import-status">已解析</span></div></div>' +
+          '<div class="life-import-file"><div class="life-row"><div><b>支付宝</b><div class="life-muted">.csv · 表头第 24 行 · 420 条记录</div></div><span class="life-import-status">已解析</span></div></div>' +
+          '<div class="life-import-file"><div class="life-row"><div><b>记账软件</b><div class="life-muted">.xls · 表头第 1 行 · 5 条记录</div></div><span class="life-import-status">已解析</span></div></div></section>' +
+          '<section class="life-panel"><div class="life-panel-head"><h2 class="life-panel-title">下一步</h2><span class="life-muted">不会自动写入账本</span></div><p class="life-note">同源弱重复和跨来源候选必须进入待审核；银行作为资金锚点，支付平台保留详细信息。</p><div class="life-actions"><button class="life-primary-button" type="button" data-action="reconcile">查看关联候选</button><button class="life-secondary-button" type="button" data-route="finance">返回财务</button></div></section>';
+      }
+
+      function renderReconcile() {
+        main.innerHTML = '<div class="life-title-line"><button class="life-text-button" type="button" data-action="import">‹ 导入账单</button></div><h1 class="life-page-title">关联审核</h1><p class="life-page-subtitle">候选关系不会直接改变正式账本。</p>' +
+          '<section class="life-panel"><div class="life-panel-head"><h2 class="life-panel-title">待审核候选</h2><span class="life-status">8 组</span></div><div class="life-list">' +
+          '<div class="life-row"><div class="life-row-main"><span class="life-row-title">银行 ↔ 支付宝</span><span class="life-row-meta">同方向 · 同金额 · 时间接近 · 建议重复</span></div><button class="life-secondary-button" type="button" data-action="confirm-link">审核</button></div>' +
+          '<div class="life-row"><div class="life-row-main"><span class="life-row-title">银行 ↔ 微信</span><span class="life-row-meta">银行锚点 · 支付平台详细信息</span></div><button class="life-secondary-button" type="button" data-action="confirm-link">审核</button></div>' +
+          '<div class="life-row"><div class="life-row-main"><span class="life-row-title">银行内部弱重复</span><span class="life-row-meta">没有稳定流水号，禁止自动合并</span></div><button class="life-secondary-button" type="button" data-action="confirm-link">审核</button></div>' +
+          '</div></section>' +
+          '<section class="life-panel"><div class="life-panel-head"><h2 class="life-panel-title">确认规则</h2></div><div class="life-check-list"><div class="life-check">✓ 原始来源永久保留至保留期结束</div><div class="life-check">✓ 正式账本统计一笔</div><div class="life-check">✓ 支付平台详情继续可查看</div><div class="life-check">✓ 所有决定进入审计</div></div></section>';
+      }
+
+      function renderHome() {
+        main.innerHTML = '<h1 class="life-page-title">家庭空间</h1><p class="life-page-subtitle">围绕主题讨论，不建设独立收件箱。</p>' +
+          '<section class="life-panel"><div class="life-panel-head"><div><h2 class="life-panel-title">今天想一起推进什么？</h2><span class="life-muted">想法、需求和灵感都归档在主题里</span></div><button class="life-primary-button" type="button" data-action="new-topic">发布主题</button></div></section>' +
+          '<section class="life-panel"><div class="life-panel-head"><h2 class="life-panel-title">最近主题</h2><button class="life-link-button" type="button" data-action="topic-summary">AI 摘要</button></div><div class="life-list">' +
+          '<button class="life-row-button" type="button" data-action="topic-detail"><span class="life-row-main"><span class="life-row-title">周末家庭活动</span><span class="life-row-meta"><span class="life-topic-type">需求</span> 3 条讨论 · 昨天更新</span></span><span class="life-status">进行中</span></button>' +
+          '<button class="life-row-button" type="button" data-action="topic-detail"><span class="life-row-main"><span class="life-row-title">想给家里增加一点绿植</span><span class="life-row-meta"><span class="life-topic-type">灵感</span> 1 条讨论 · 周一更新</span></span><span class="life-status">开放</span></button>' +
+          '</div></section>';
+      }
+
+      function renderTopic() {
+        main.innerHTML = '<div class="life-title-line"><button class="life-text-button" type="button" data-route="home">‹ 家庭空间</button></div><h1 class="life-page-title">周末家庭活动</h1><p class="life-page-subtitle"><span class="life-topic-type">需求</span> · 进行中 · 仅本家庭可见</p>' +
+          '<section class="life-panel"><p>希望周末安排一个全家都能参与的活动，预算和天气需要一起考虑。</p><div class="life-actions"><button class="life-secondary-button" type="button" data-action="topic-summary">查看 AI 摘要</button><button class="life-secondary-button" type="button" data-action="topic-status">变更状态</button></div></section>' +
+          '<section class="life-panel"><div class="life-panel-head"><h2 class="life-panel-title">讨论</h2><span class="life-muted">3 条</span></div><div class="life-list"><div class="life-row"><div class="life-row-main"><span class="life-row-title">爸爸</span><span class="life-row-meta">周六上午可能有空</span></div><span class="life-muted">10:30</span></div><div class="life-row"><div class="life-row-main"><span class="life-row-title">妈妈</span><span class="life-row-meta">希望有适合孩子的安排</span></div><span class="life-muted">10:42</span></div></div></section>';
+      }
+
+      function renderFood() {
+        main.innerHTML = '<h1 class="life-page-title">吃什么</h1><p class="life-page-subtitle">先给推荐，确认后进入 HowToCook。</p>' +
+          '<section class="life-panel"><div class="life-panel-head"><div><h2 class="life-panel-title">今天晚餐</h2><span class="life-muted">根据家庭长期行为和当前场景</span></div><button class="life-secondary-button" type="button" data-action="pairing">智能搭配</button></div>' +
+          '<button class="life-food-card" type="button" data-action="choose-food"><div class="life-food-image">菜谱图</div><div><b>西红柿牛腩</b><div class="life-muted">25 分钟 · 2–3 人 · 家庭接受度高</div><div class="life-muted">推荐理由：最近较少重复，适合今晚时间</div></div></button>' +
+          '<button class="life-food-card" type="button" data-action="choose-food"><div class="life-food-image">菜谱图</div><div><b>清炒时蔬</b><div class="life-muted">15 分钟 · 2 人 · 快手</div><div class="life-muted">推荐理由：与主菜搭配，采购重叠少</div></div></button></section>' +
+          '<section class="life-panel"><div class="life-panel-head"><h2 class="life-panel-title">自动记录</h2><button class="life-link-button" type="button" data-action="history">吃过什么</button></div><p class="life-note">系统只根据高置信完成事件记录，不提供手动饮食日志。</p></section>' +
+          '<section class="life-panel"><div class="life-panel-head"><h2 class="life-panel-title">搜索菜谱</h2><button class="life-secondary-button" type="button" data-action="search-food">搜索</button></div><p class="life-note">菜名、食材、口味、耗时和难度均可搜索。</p></section>';
+      }
+
+      function renderFoodConfirm() {
+        main.innerHTML = '<div class="life-title-line"><button class="life-text-button" type="button" data-route="food">‹ 吃什么</button></div><h1 class="life-page-title">确认这一餐</h1><p class="life-page-subtitle">确认后进入 HowToCook，来源和份数会一起带入。</p>' +
+          '<section class="life-panel"><div class="life-row"><div class="life-row-main"><span class="life-row-title">西红柿牛腩</span><span class="life-row-meta">主菜 · 2–3 人 · 25 分钟</span></div><span class="life-status">已选择</span></div><div class="life-row"><div class="life-row-main"><span class="life-row-title">清炒时蔬</span><span class="life-row-meta">配菜 · 2 人 · 15 分钟</span></div><span class="life-status">可选</span></div><div class="life-actions"><button class="life-secondary-button" type="button" data-action="change-serving">调整份数</button><button class="life-primary-button" type="button" data-action="cook">进入 HowToCook</button></div></section>';
+      }
+
+      function renderCook() {
+        main.innerHTML = '<div class="life-title-line"><button class="life-text-button" type="button" data-route="food">‹ 吃什么</button></div><h1 class="life-page-title">HowToCook · 西红柿牛腩</h1><p class="life-page-subtitle">本地审核发布包 · 2–3 人 · 25 分钟</p>' +
+          '<section class="life-panel"><div class="life-panel-head"><h2 class="life-panel-title">食材</h2><button class="life-secondary-button" type="button" data-action="shopping">生成采购清单</button></div><div class="life-check-list"><div class="life-check">□ 牛腩 500g</div><div class="life-check">□ 西红柿 3 个</div><div class="life-check">□ 土豆 2 个</div><div class="life-check">□ 洋葱 1 个</div></div></section>' +
+          '<section class="life-panel"><div class="life-panel-head"><h2 class="life-panel-title">步骤</h2><button class="life-link-button" type="button" data-action="ai-step">AI 解释</button></div><ol><li>食材清洗并切块。</li><li>牛腩焯水后与调味料一起翻炒。</li><li>加入西红柿和清水，炖至软烂。</li></ol><p class="life-note">AI 解释属于建议，不替代审核后的原始步骤。</p></section>';
+      }
+
+      function renderHistory() {
+        main.innerHTML = '<div class="life-title-line"><button class="life-text-button" type="button" data-route="food">‹ 吃什么</button></div><h1 class="life-page-title">吃过什么</h1><p class="life-page-subtitle">系统自动采集的高置信完成事件，只读展示。</p>' +
+          '<section class="life-panel"><div class="life-list"><button class="life-row-button" type="button" data-action="cook"><span class="life-row-main"><span class="life-row-title">西红柿牛腩</span><span class="life-row-meta">2026-08-20 · 晚餐 · 来源：完成烹饪</span></span><span class="life-link-button">查看菜谱</span></button><div class="life-row"><div class="life-row-main"><span class="life-row-title">暂无更多高置信记录</span><span class="life-row-meta">浏览、收藏和选择不会直接判定为吃过</span></div></div></div></section>';
+      }
+
+      function renderMore() {
+        main.innerHTML = '<h1 class="life-page-title">更多</h1><p class="life-page-subtitle">家庭设置、AI 连接和数据控制。</p>' +
+          '<section class="life-panel"><div class="life-panel-head"><h2 class="life-panel-title">家庭与成员</h2><span class="life-status">4 位成员</span></div><div class="life-list"><div class="life-row"><div class="life-row-main"><span class="life-row-title">儿童成员</span><span class="life-row-meta">财务权限：默认关闭</span></div><button class="life-text-button" type="button" data-action="permission">管理</button></div><div class="life-row"><div class="life-row-main"><span class="life-row-title">一个账号只能属于一个家庭</span><span class="life-row-meta">不提供普通家庭切换器</span></div></div></div></section>' +
+          '<section class="life-panel"><div class="life-panel-head"><h2 class="life-panel-title">家庭 AI</h2><span class="life-status">已配置</span></div><div class="life-row"><div class="life-row-main"><span class="life-row-title">家庭专属连接</span><span class="life-row-meta">连接、能力和记忆均按家庭隔离</span></div><button class="life-text-button" type="button" data-action="ai-settings">管理</button></div><div class="life-actions"><button class="life-danger-button" type="button" data-action="clear-memory">清除 AI 记忆</button></div></section>';
+      }
+
+      async function loadDrilldown(ref, title, fallbackItems) {
+        state.drilldown = { title, items: fallbackItems };
+        render();
+        if (!ref || !ref.filter_id) return;
+        try {
+          const response = await fetch("/api/finance/drilldowns/" + encodeURIComponent(ref.filter_id), { credentials: "include" });
+          if (!response.ok) return;
+          const payload = await response.json();
+          const items = (payload.items || []).map((item) => [
+            item.merchant || item.event_type || item.category || "明细",
+            item.occurred_at || item.direction || "服务端过滤结果",
+            item.amount || item.recovery_amount || "查看",
+          ]);
+          state.drilldown = { title, items: items.length ? items : [["暂无明细", "当前过滤条件没有正式账本记录", "0"]] };
+          render();
+        } catch (_error) {
+          // API 不可用时保留低保真设计预览，不阻断交互演示。
+        }
+      }
+
+      function render() {
+        if (state.route === "finance") renderFinance();
+        else if (state.route === "import") renderImport();
+        else if (state.route === "reconcile") renderReconcile();
+        else if (state.route === "home") renderHome();
+        else if (state.route === "topic") renderTopic();
+        else if (state.route === "food") renderFood();
+        else if (state.route === "food-confirm") renderFoodConfirm();
+        else if (state.route === "cook") renderCook();
+        else if (state.route === "history") renderHistory();
+        else renderMore();
+
+        root.querySelectorAll("[data-route]").forEach((element) => {
+          element.addEventListener("click", () => {
+            state.route = element.dataset.route;
+            state.drilldown = null;
+            render();
+          });
+        });
+        root.querySelectorAll("[data-action]").forEach((element) => {
+          element.addEventListener("click", () => {
+            const action = element.dataset.action;
+            const label = element.dataset.label || "";
+            if (action === "import") state.route = "import";
+            if (action === "reconcile") state.route = "reconcile";
+            if (action === "clear-drill") state.drilldown = null;
+            if (action === "budget-drill") {
+              const item = financeData.budgets.find((budget) => budget.label === label);
+              loadDrilldown(item.ref, label + " · 预算分类明细", [[item.detail[0], item.detail[1], item.used + " / " + item.limit], ["可下钻来源", item.detail[2], "查看"]]);
+            }
+            if (action === "budget-center") state.drilldown = { title: "当前周期 · 全部预算明细", items: [["预算总览", "所有分类", "查看账单"], ["待纳入预算", "需要人工处理", "3 条候选"]]};
+            if (action === "budget-all") state.drilldown = { title: "全部预算分类", items: financeData.budgets.map((item) => [item.label, "¥" + item.used + " / ¥" + item.limit, (Number(item.progress) || 0) + "%"]) };
+            if (action === "summary-drill") state.drilldown = { title: label + " · 周期明细", items: [["统一账本", "服务端过滤结果", "进入流水"], ["来源关系", "银行 / 支付平台", "查看"]]};
+            if (action === "trend-drill") {
+              const item = financeData.trend.find((point) => point.label === label);
+              loadDrilldown(item.ref, label + " · 趋势点明细", [[item.detail[0], item.detail[1], item.detail[2]], ["原始来源", "可追溯账单", "查看"]]);
+            }
+            if (action === "asset-drill") {
+              const item = financeData.assets.find((asset) => asset.label === label);
+              loadDrilldown(item.ref, label + " · 实物资产事件", [[item.detail[0], item.detail[1], item.value], ["账本关联", item.detail[2], "查看"]]);
+            }
+            if (action === "asset-center") state.drilldown = { title: "实物资产 · 成本趋势明细", items: [["购买成本", "累计事件", "3,000"], ["维护成本", "累计事件", "200"], ["回收金额", "资产出售", "500"], ["净现金成本", "毛成本 - 回收", "2,700"]]};
+            if (action === "confirm-link") state.route = "finance";
+            if (action === "new-topic") state.route = "topic";
+            if (action === "topic-detail") state.route = "topic";
+            if (action === "topic-summary") state.drilldown = { title: "主题 AI 摘要", items: [["已确认事实", "家庭成员周末有空", "可追溯"], ["未决事项", "天气和预算", "待讨论"], ["建议草稿", "选择室内备选", "待确认"]]};
+            if (action === "topic-status") state.route = "home";
+            if (action === "choose-food") state.route = "food-confirm";
+            if (action === "pairing") state.route = "food-confirm";
+            if (action === "history") state.route = "history";
+            if (action === "cook") state.route = "cook";
+            if (action === "shopping") state.route = "food";
+            if (action === "search-food") state.route = "food";
+            if (action === "permission") state.route = "more";
+            if (action === "ai-settings") state.route = "more";
+            if (action === "clear-memory") state.drilldown = { title: "清除 AI 记忆", items: [["确认范围", "结构化记忆、文件、向量和缓存", "待确认"], ["影响", "不影响正式账本和主题原文", "安全"]]};
+            if (action === "scope-info") state.drilldown = { title: "家庭隔离说明", items: [["当前家庭", "所有页面只读取当前家庭", "已生效"], ["AI", "连接、记忆和向量按家庭隔离", "已生效"], ["账单原件", "原始文件保留 365 天", "可审计"]]};
+            render();
+          });
+        });
+        root.querySelectorAll(".life-bottom-button").forEach((tab) => tab.setAttribute("aria-current", tab.dataset.route === state.route || (state.route.startsWith("food") && tab.dataset.route === "food") ? "page" : "false"));
+      }
+
+      render();
+      loadFinanceOverview();
+    })();
+  </script>
+</div>
+</body>
+</html>

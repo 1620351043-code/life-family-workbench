@@ -1,0 +1,2831 @@
+openapi: 3.1.0
+info:
+  title: Life 家庭生活工作台 API
+  version: 0.1.0
+  description: |
+    移动端 PWA 首期 API 契约。家庭业务请求从 HttpOnly 会话推导唯一家庭，
+    客户端提交的 household_id 不能改变服务端租户上下文。财务金额统一使用
+    定点金额字符串；所有摘要、预算环、趋势点和资产成本点返回 drilldown_ref。
+servers:
+  - url: https://{host}
+    variables:
+      host:
+        default: life.example.com
+security:
+  - cookieAuth: []
+tags:
+  - name: Identity
+  - name: Family Space
+  - name: AI
+  - name: Finance Overview
+  - name: Finance Import
+paths:
+  /api/auth/login:
+    post:
+      tags: [Identity]
+      operationId: login
+      summary: 使用邮箱和密码创建 HttpOnly 家庭会话
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: 登录成功；响应同时通过 Set-Cookie 写入 life_session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MeResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /api/auth/logout:
+    post:
+      tags: [Identity]
+      operationId: logout
+      summary: 撤销当前 HttpOnly 家庭会话
+      security: []
+      responses:
+        '200':
+          description: 已退出
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok]
+                properties:
+                  ok:
+                    type: boolean
+  /api/auth/register:
+    post:
+      tags: [Identity]
+      operationId: register
+      summary: 注册用户并创建唯一家庭
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: 注册成功并创建 owner 会话
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MeResponse'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/me:
+    get:
+      tags: [Identity]
+      operationId: getMe
+      summary: 获取当前用户和唯一家庭归属
+      responses:
+        '200':
+          description: 当前身份
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MeResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /api/finance/overview:
+    get:
+      tags: [Finance Overview]
+      operationId: getFinanceOverview
+      summary: 获取财务首页摘要
+      parameters:
+        - $ref: '#/components/parameters/PeriodStart'
+        - $ref: '#/components/parameters/PeriodEnd'
+        - $ref: '#/components/parameters/Granularity'
+      responses:
+        '200':
+          description: 财务首页展示模型
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FinanceOverview'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/finance/accounts:
+    get:
+      tags: [Finance Overview]
+      operationId: listFinanceAccounts
+      summary: 获取当前家庭账户及余额
+      responses:
+        '200':
+          description: 账户列表
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [accounts]
+                properties:
+                  accounts:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/FinanceAccount'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      tags: [Finance Overview]
+      operationId: createFinanceAccount
+      summary: 创建账本账户
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateFinanceAccountRequest'
+      responses:
+        '201':
+          description: 账户已创建
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FinanceAccount'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/finance/accounts/{accountId}:
+    patch:
+      tags: [Finance Overview]
+      operationId: updateFinanceAccount
+      summary: 编辑当前家庭账户
+      parameters:
+        - $ref: '#/components/parameters/AccountId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateFinanceAccountRequest'
+      responses:
+        '200':
+          description: 账户已更新
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FinanceAccount'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/finance/accounts/{accountId}/archive:
+    post:
+      tags: [Finance Overview]
+      operationId: archiveFinanceAccount
+      summary: 归档当前家庭账户
+      parameters:
+        - $ref: '#/components/parameters/AccountId'
+      responses:
+        '200':
+          description: 账户已归档，历史流水保留
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [account_id]
+                properties:
+                  account_id:
+                    type: string
+                    format: uuid
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/finance/categories:
+    get:
+      tags: [Finance Overview]
+      operationId: listFinanceCategories
+      summary: 获取记账分类
+      parameters:
+        - name: direction
+          in: query
+          schema:
+            type: string
+            enum: [income, expense, transfer]
+        - name: include_archived
+          in: query
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: 分类列表
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [categories]
+                properties:
+                  categories:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/FinanceCategory'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [Finance Overview]
+      operationId: createFinanceCategory
+      summary: 新增记账分类
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FinanceCategoryWriteRequest'
+      responses:
+        '201':
+          description: 分类已创建
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FinanceCategory'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/finance/categories/{categoryId}:
+    patch:
+      tags: [Finance Overview]
+      operationId: updateFinanceCategory
+      summary: 编辑记账分类
+      parameters:
+        - $ref: '#/components/parameters/CategoryId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FinanceCategoryWriteRequest'
+      responses:
+        '200':
+          description: 分类已更新
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FinanceCategory'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/finance/categories/{categoryId}/archive:
+    post:
+      tags: [Finance Overview]
+      operationId: archiveFinanceCategory
+      summary: 归档记账分类
+      parameters:
+        - $ref: '#/components/parameters/CategoryId'
+      responses:
+        '200':
+          description: 分类已归档，历史账单引用保留
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [category_id]
+                properties:
+                  category_id:
+                    type: string
+                    format: uuid
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/finance/budgets:
+    get:
+      tags: [Finance Overview]
+      operationId: listFinanceBudgets
+      summary: 获取周期预算及使用进度
+      parameters:
+        - $ref: '#/components/parameters/PeriodStart'
+        - $ref: '#/components/parameters/PeriodEnd'
+        - name: include_archived
+          in: query
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: 预算列表
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [budgets]
+                properties:
+                  budgets:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/FinanceBudget'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      tags: [Finance Overview]
+      operationId: createFinanceBudget
+      summary: 新增分类预算
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FinanceBudgetWriteRequest'
+      responses:
+        '201':
+          description: 预算已创建
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FinanceBudget'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/finance/permissions:
+    get:
+      tags: [Finance Permissions]
+      operationId: listFinancePermissions
+      summary: 获取家庭成员财务权限
+      responses:
+        '200':
+          description: 当前家庭成员的财务授权
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [permissions]
+                properties:
+                  permissions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/FinancePermission'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/finance/permissions/{userId}:
+    patch:
+      tags: [Finance Permissions]
+      operationId: updateFinancePermission
+      summary: 更新家庭成员财务权限
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FinancePermissionWriteRequest'
+      responses:
+        '200':
+          description: 财务权限已更新
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FinancePermission'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/finance/permissions/{userId}/revoke:
+    post:
+      tags: [Finance Permissions]
+      operationId: revokeFinancePermission
+      summary: 撤销家庭成员全部财务权限
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      responses:
+        '200':
+          description: 权限已撤销
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [user_id]
+                properties:
+                  user_id:
+                    type: string
+                    format: uuid
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/finance/audit:
+    get:
+      tags: [Finance Permissions]
+      operationId: listFinanceAudit
+      summary: 获取财务授权与关键操作审计
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+      responses:
+        '200':
+          description: 审计条目
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [entries]
+                properties:
+                  entries:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/FinanceAuditEntry'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/finance/exports:
+    post:
+      tags: [Finance Overview]
+      operationId: createFinanceExport
+      summary: 创建带审计和有效期的异步账单导出任务
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FinanceExportRequest'
+      responses:
+        '202':
+          description: 导出任务已进入数据库队列
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FinanceExportJob'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/finance/exports/{exportId}:
+    get:
+      tags: [Finance Overview]
+      operationId: getFinanceExport
+      summary: 获取导出任务状态
+      parameters:
+        - name: exportId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: 导出任务状态
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FinanceExportJob'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/finance/exports/{exportId}/download:
+    get:
+      tags: [Finance Overview]
+      operationId: downloadFinanceExport
+      summary: 下载当前家庭的短时有效账单导出
+      parameters:
+        - name: exportId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: CSV 文件或 COS 私有签名下载
+          content:
+            text/csv:
+              schema:
+                type: string
+                format: binary
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/finance/ai/summary:
+    get:
+      tags: [Finance AI]
+      operationId: getFinanceAiSummary
+      summary: 获取带来源引用的财务 AI 摘要与解释
+      parameters:
+        - $ref: '#/components/parameters/PeriodStart'
+        - $ref: '#/components/parameters/PeriodEnd'
+      responses:
+        '200':
+          description: 财务 AI 摘要和待确认提案
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FinanceAiSummaryResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/finance/ai/connection:
+    get:
+      tags: [Finance AI]
+      operationId: getFinanceAiConnection
+      summary: 获取当前家庭 AI 连接元数据
+      responses:
+        '200':
+          description: 不包含 API 密钥的家庭 AI 连接
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [connection]
+                properties:
+                  connection:
+                    allOf:
+                      - $ref: '#/components/schemas/FinanceAiConnection'
+                    nullable: true
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    put:
+      tags: [Finance AI]
+      operationId: upsertFinanceAiConnection
+      summary: 家庭所有者更新独立 AI 连接引用
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FinanceAiConnectionWriteRequest'
+      responses:
+        '200':
+          description: AI 连接已更新
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [connection]
+                properties:
+                  connection:
+                    $ref: '#/components/schemas/FinanceAiConnection'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/finance/ai/connection/test:
+    post:
+      tags: [Finance AI]
+      operationId: testFinanceAiConnection
+      summary: 测试当前家庭 AI 连接
+      responses:
+        '200':
+          description: AI 连接测试成功
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [connection]
+                properties:
+                  connection:
+                    $ref: '#/components/schemas/FinanceAiConnection'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '502':
+          $ref: '#/components/responses/BadRequest'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /api/finance/ai/proposals/{proposalId}/decision:
+    post:
+      tags: [Finance AI]
+      operationId: decideFinanceAiProposal
+      summary: 确认或拒绝财务 AI 提案
+      parameters:
+        - $ref: '#/components/parameters/ProposalId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FinanceAiDecisionRequest'
+      responses:
+        '200':
+          description: 提案决策结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FinanceAiDecisionResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/finance/ai/proposals/{proposalId}/revoke:
+    post:
+      tags: [Finance AI]
+      operationId: revokeFinanceAiProposal
+      summary: 撤销财务 AI 提案
+      parameters:
+        - $ref: '#/components/parameters/ProposalId'
+      responses:
+        '200':
+          description: 提案已撤销
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [proposal]
+                properties:
+                  proposal:
+                    $ref: '#/components/schemas/FinanceAiProposal'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/finance/budgets/{budgetId}:
+    patch:
+      tags: [Finance Overview]
+      operationId: updateFinanceBudget
+      summary: 调整当前或未来周期预算
+      parameters:
+        - $ref: '#/components/parameters/BudgetId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FinanceBudgetWriteRequest'
+      responses:
+        '200':
+          description: 预算已更新，历史账单不被重写
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FinanceBudget'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/finance/budgets/{budgetId}/archive:
+    post:
+      tags: [Finance Overview]
+      operationId: archiveFinanceBudget
+      summary: 归档分类预算
+      parameters:
+        - $ref: '#/components/parameters/BudgetId'
+      responses:
+        '200':
+          description: 预算已归档，历史统计保留
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [budget_id]
+                properties:
+                  budget_id:
+                    type: string
+                    format: uuid
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/finance/assets:
+    get:
+      tags: [Finance Overview]
+      operationId: listFinanceAssets
+      summary: 获取家庭实物资产及累计成本
+      responses:
+        '200':
+          description: 资产列表
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [assets]
+                properties:
+                  assets:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/FinanceAsset'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      tags: [Finance Overview]
+      operationId: createFinanceAsset
+      summary: 新增家庭实物资产
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FinanceAssetWriteRequest'
+      responses:
+        '201':
+          description: 资产已创建
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FinanceAssetDetail'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/finance/assets/{assetId}:
+    get:
+      tags: [Finance Overview]
+      operationId: getFinanceAsset
+      summary: 查看资产详情和成本事件
+      parameters:
+        - $ref: '#/components/parameters/AssetId'
+      responses:
+        '200':
+          description: 资产详情
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FinanceAssetDetail'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [Finance Overview]
+      operationId: updateFinanceAsset
+      summary: 编辑资产名称和类型
+      parameters:
+        - $ref: '#/components/parameters/AssetId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FinanceAssetWriteRequest'
+      responses:
+        '200':
+          description: 资产已更新
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FinanceAsset'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/finance/assets/{assetId}/events:
+    post:
+      tags: [Finance Overview]
+      operationId: createFinanceAssetEvent
+      summary: 新增资产成本或回收事件
+      parameters:
+        - $ref: '#/components/parameters/AssetId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FinanceAssetEventWriteRequest'
+      responses:
+        '201':
+          description: 资产事件已写入
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssetEvent'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/finance/transactions:
+    get:
+      tags: [Finance Overview]
+      operationId: listFinanceTransactions
+      summary: 获取统一账本流水
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - name: start
+          in: query
+          schema: { type: string, format: date }
+        - name: end
+          in: query
+          schema: { type: string, format: date }
+        - name: direction
+          in: query
+          schema: { type: string, enum: [income, expense, transfer] }
+        - name: account_id
+          in: query
+          schema: { type: string, format: uuid }
+        - name: import_batch_id
+          in: query
+          description: 只查看指定导入批次已经写入统一账本的流水
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: 分页流水
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FinanceTransactionListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [Finance Overview]
+      operationId: createManualFinanceTransaction
+      summary: 新增手动记账
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema:
+            type: string
+            minLength: 8
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ManualTransactionRequest'
+      responses:
+        '201':
+          description: 手动记账已写入统一账本
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransactionWriteResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/family/topics:
+    get:
+      tags: [Family Space]
+      operationId: listFamilyTopics
+      summary: 获取当前家庭主题列表
+      responses:
+        '200':
+          description: 当前家庭可见主题
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FamilyTopicListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [Family Space]
+      operationId: createFamilyTopic
+      summary: 发布家庭主题
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateFamilyTopicRequest'
+      responses:
+        '201':
+          description: 主题已发布
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FamilyTopicDetail'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+  /api/family/topics/{topicId}:
+    get:
+      tags: [Family Space]
+      operationId: getFamilyTopic
+      summary: 查看主题和家庭讨论
+      parameters:
+        - $ref: '#/components/parameters/TopicId'
+      responses:
+        '200':
+          description: 主题详情
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FamilyTopicDetail'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/family/topics/{topicId}/comments:
+    post:
+      tags: [Family Space]
+      operationId: createFamilyTopicComment
+      summary: 发布主题评论
+      parameters:
+        - $ref: '#/components/parameters/TopicId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTopicCommentRequest'
+      responses:
+        '201':
+          description: 评论已发布
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FamilyTopicComment'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/family/topics/{topicId}/ai-summary:
+    post:
+      tags: [AI]
+      operationId: generateFamilyTopicAiSummary
+      summary: 生成带来源的主题摘要和 AI 行动提案
+      parameters:
+        - $ref: '#/components/parameters/TopicId'
+      responses:
+        '200':
+          description: 摘要和待确认行动提案
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TopicAiSummaryResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/ai/action-proposals/{proposalId}/decision:
+    post:
+      tags: [AI]
+      operationId: decideAiActionProposal
+      summary: 确认或拒绝 AI 写入提案
+      parameters:
+        - $ref: '#/components/parameters/ProposalId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AiActionDecisionRequest'
+      responses:
+        '200':
+          description: 提案处理结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AiActionDecisionResponse'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/finance/drilldowns/{filterId}:
+    get:
+      tags: [Finance Overview]
+      operationId: getFinanceDrilldown
+      summary: 执行服务端生成的财务下钻过滤
+      parameters:
+        - $ref: '#/components/parameters/FilterId'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: 下钻后的账单或资产事件
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FinanceDrilldownResponse'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/finance/transactions/{transactionId}:
+    get:
+      tags: [Finance Overview]
+      operationId: getFinanceTransaction
+      summary: 查看统一账单详情及来源关系
+      parameters:
+        - $ref: '#/components/parameters/TransactionId'
+      responses:
+        '200':
+          description: 统一交易详情
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransactionDetail'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [Finance Overview]
+      operationId: updateManualFinanceTransaction
+      summary: 编辑手动记账
+      parameters:
+        - $ref: '#/components/parameters/TransactionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ManualTransactionRequest'
+      responses:
+        '200':
+          description: 手动记账已更新
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransactionWriteResponse'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/finance/transactions/{transactionId}/void:
+    post:
+      tags: [Finance Overview]
+      operationId: voidManualFinanceTransaction
+      summary: 撤销手动记账
+      parameters:
+        - $ref: '#/components/parameters/TransactionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason:
+                  type: string
+                  minLength: 1
+                  maxLength: 500
+      responses:
+        '200':
+          description: 记账已撤销
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransactionWriteResponse'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/finance/import-batches:
+    get:
+      tags: [Finance Import]
+      operationId: listImportBatches
+      summary: 获取当前家庭最近导入批次
+      parameters:
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: 最近导入批次
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [batches]
+                properties:
+                  batches:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ImportBatch'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      tags: [Finance Import]
+      operationId: createImportBatch
+      summary: 创建账单导入批次
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateImportBatchRequest'
+      responses:
+        '201':
+          description: 导入批次已创建
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportBatch'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+  /api/finance/import-batches/{batchId}/upload:
+    post:
+      tags: [Finance Import]
+      operationId: uploadImportBatchFile
+      summary: 上传并校验原始账单文件
+      parameters:
+        - $ref: '#/components/parameters/BatchId'
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      responses:
+        '200':
+          description: 文件已上传并通过大小与 SHA-256 校验
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportBatch'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/finance/import-batches/{batchId}:
+    get:
+      tags: [Finance Import]
+      operationId: getImportBatch
+      summary: 获取导入批次状态
+      parameters:
+        - $ref: '#/components/parameters/BatchId'
+      responses:
+        '200':
+          description: 导入批次
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportBatch'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/finance/import-batches/{batchId}/errors:
+    get:
+      tags: [Finance Import]
+      operationId: listImportBatchErrors
+      summary: 获取导入批次问题行
+      parameters:
+        - $ref: '#/components/parameters/BatchId'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: 问题行及错误码
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [rows]
+                properties:
+                  rows:
+                    type: array
+                    items:
+                      type: object
+                      required: [row_number, status, error_codes, normalized_payload]
+                      properties:
+                        row_number: { type: integer }
+                        status: { type: string }
+                        error_codes:
+                          type: array
+                          items: { type: string }
+                        normalized_payload:
+                          type: object
+                          additionalProperties: true
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/finance/import-batches/{batchId}/parse:
+    post:
+      tags: [Finance Import]
+      operationId: parseImportBatch
+      summary: 启动隔离账单解析 worker 并写入导入行与来源记录
+      description: |
+        当前开发阶段使用本地解析 worker 读取已上传对象；生产环境仍需注入
+        对象存储适配器。解析结果只写入 import_row/source_record，不直接写入正式账本。
+      parameters:
+        - $ref: '#/components/parameters/BatchId'
+      responses:
+        '200':
+          description: 解析完成并等待表头确认
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportBatch'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/finance/import-batches/{batchId}/header-confirmation:
+    post:
+      tags: [Finance Import]
+      operationId: confirmImportHeader
+      summary: 确认表头和数据区域
+      parameters:
+        - $ref: '#/components/parameters/BatchId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HeaderConfirmation'
+      responses:
+        '200':
+          description: 表头确认后的批次
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportBatch'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+  /api/finance/import-batches/{batchId}/mapping-confirmation:
+    post:
+      tags: [Finance Import]
+      operationId: confirmImportMapping
+      summary: 确认统一字段映射
+      parameters:
+        - $ref: '#/components/parameters/BatchId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FieldMappingConfirmation'
+      responses:
+        '200':
+          description: 映射确认后的批次
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportBatch'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+  /api/finance/import-batches/{batchId}/reconciliation:
+    get:
+      tags: [Finance Import]
+      operationId: getImportReconciliation
+      summary: 获取重复和跨来源关联候选
+      parameters:
+        - $ref: '#/components/parameters/BatchId'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: 待确认关联候选
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReconciliationResponse'
+  /api/finance/import-batches/{batchId}/reconciliation/decisions:
+    post:
+      tags: [Finance Import]
+      operationId: decideImportReconciliation
+      summary: 提交重复或跨来源关系决定
+      parameters:
+        - $ref: '#/components/parameters/BatchId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReconciliationDecisionRequest'
+      responses:
+        '200':
+          description: 决定保存后的候选
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReconciliationCandidate'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/finance/import-batches/{batchId}/commit:
+    post:
+      tags: [Finance Import]
+      operationId: commitImportBatch
+      summary: 确认导入并写入正式账本
+      parameters:
+        - $ref: '#/components/parameters/BatchId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommitImportRequest'
+      responses:
+        '200':
+          description: 导入结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommitImportResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/finance/import-batches/{batchId}/revoke:
+    post:
+      tags: [Finance Import]
+      operationId: revokeImportBatch
+      summary: 撤销导入产生的正式关系
+      parameters:
+        - $ref: '#/components/parameters/BatchId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: 撤销结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportBatch'
+        '409':
+          $ref: '#/components/responses/Conflict'
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: life_session
+  parameters:
+    AccountId:
+      name: accountId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    CategoryId:
+      name: categoryId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    BudgetId:
+      name: budgetId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    AssetId:
+      name: assetId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    UserId:
+      name: userId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    PeriodStart:
+      name: start
+      in: query
+      required: true
+      schema:
+        type: string
+        format: date
+    PeriodEnd:
+      name: end
+      in: query
+      required: true
+      schema:
+        type: string
+        format: date
+    Granularity:
+      name: granularity
+      in: query
+      schema:
+        type: string
+        enum: [day, week, month, quarter]
+        default: day
+    FilterId:
+      name: filterId
+      in: path
+      required: true
+      schema:
+        type: string
+    TransactionId:
+      name: transactionId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    TopicId:
+      name: topicId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    ProposalId:
+      name: proposalId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    BatchId:
+      name: batchId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    Page:
+      name: page
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    PageSize:
+      name: pageSize
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+        minLength: 8
+  responses:
+    BadRequest:
+      description: 请求参数或批次状态不合法
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: 未登录
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: 当前家庭或成员权限不允许访问
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: 资源不存在或不属于当前家庭
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Conflict:
+      description: 版本或状态冲突
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unavailable:
+      description: 外部 AI 或基础设施暂不可用
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+  schemas:
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 1
+          maxLength: 1024
+    RegisterRequest:
+      type: object
+      required: [email, password, household_name]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 1
+          maxLength: 1024
+        household_name:
+          type: string
+          minLength: 1
+          maxLength: 80
+    MeResponse:
+      type: object
+      required: [user, household]
+      properties:
+        user:
+          $ref: '#/components/schemas/User'
+        household:
+          $ref: '#/components/schemas/Household'
+    User:
+      type: object
+      required: [id, email]
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+    Household:
+      type: object
+      required: [id, name, role]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        role:
+          type: string
+          enum: [owner, adult, child, guest]
+    FamilyTopicCard:
+      type: object
+      required: [id, topic_type, title, body_preview, author_id, author_name, comment_count, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        topic_type:
+          type: string
+          enum: [idea, request, inspiration, memory, other]
+        title:
+          type: string
+        body_preview:
+          type: string
+        author_id:
+          type: string
+          format: uuid
+        author_name:
+          type: string
+        comment_count:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+    FamilyTopicComment:
+      type: object
+      required: [id, author_id, author_name, body, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        author_id:
+          type: string
+          format: uuid
+        author_name:
+          type: string
+        body:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    FamilyTopicDetail:
+      allOf:
+        - $ref: '#/components/schemas/FamilyTopicCard'
+        - type: object
+          required: [body, comments]
+          properties:
+            body:
+              type: string
+            comments:
+              type: array
+              items:
+                $ref: '#/components/schemas/FamilyTopicComment'
+    FamilyTopicListResponse:
+      type: object
+      required: [topics]
+      properties:
+        topics:
+          type: array
+          items:
+            $ref: '#/components/schemas/FamilyTopicCard'
+    CreateFamilyTopicRequest:
+      type: object
+      required: [topic_type, title, body]
+      properties:
+        topic_type:
+          type: string
+          enum: [idea, request, inspiration, memory, other]
+        title:
+          type: string
+          minLength: 1
+          maxLength: 120
+        body:
+          type: string
+          minLength: 1
+          maxLength: 10000
+    CreateTopicCommentRequest:
+      type: object
+      required: [body]
+      properties:
+        body:
+          type: string
+          minLength: 1
+          maxLength: 2000
+    AiActionProposal:
+      type: object
+      required: [id, action_type, status, version, payload]
+      properties:
+        id:
+          type: string
+          format: uuid
+        action_type:
+          type: string
+          enum: [publish_summary_comment, update_memory]
+        status:
+          type: string
+          enum: [proposed, confirmed, rejected, expired]
+        version:
+          type: integer
+        payload:
+          type: object
+          additionalProperties: true
+    TopicAiSummaryResponse:
+      type: object
+      required: [insight, action_proposal]
+      properties:
+        insight:
+          type: object
+          required: [id, insight_type, summary, key_points, source_refs, provider, created_at]
+          properties:
+            id:
+              type: string
+              format: uuid
+            insight_type:
+              type: string
+              enum: [summary]
+            summary:
+              type: string
+            key_points:
+              type: array
+              items:
+                type: string
+            source_refs:
+              type: array
+              items:
+                type: string
+                format: uuid
+            provider:
+              type: string
+            model:
+              type: string
+              nullable: true
+            created_at:
+              type: string
+              format: date-time
+        action_proposal:
+          $ref: '#/components/schemas/AiActionProposal'
+    AiActionDecisionRequest:
+      type: object
+      required: [decision, expected_version]
+      properties:
+        decision:
+          type: string
+          enum: [confirm, reject]
+        expected_version:
+          type: integer
+          minimum: 1
+    AiActionDecisionResponse:
+      type: object
+      required: [proposal, execution]
+      properties:
+        proposal:
+          $ref: '#/components/schemas/AiActionProposal'
+        execution:
+          nullable: true
+          type: object
+          required: [comment_id]
+          properties:
+            comment_id:
+              type: string
+              format: uuid
+    Period:
+      type: object
+      required: [start, end, timezone]
+      properties:
+        start:
+          type: string
+          format: date
+        end:
+          type: string
+          format: date
+        timezone:
+          type: string
+    DrilldownRef:
+      type: object
+      readOnly: true
+      required: [type, filter_id, filters]
+      properties:
+        type:
+          type: string
+          enum: [ledger_period, ledger_direction, budget_category, budget_category_group, asset_day, asset_period]
+        filter_id:
+          type: string
+        filters:
+          type: object
+          additionalProperties: true
+    SummaryCard:
+      type: object
+      required: [key, value, currency, drilldown_ref]
+      properties:
+        key:
+          type: string
+          enum: [net_asset, account_balance, income, expense, net_cash_flow]
+        value:
+          type: string
+          pattern: '^-?\d+(\.\d{1,4})?$'
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+        drilldown_ref:
+          $ref: '#/components/schemas/DrilldownRef'
+    BudgetCenter:
+      type: object
+      required: [label, total_limit, total_used, progress, drilldown_ref]
+      properties:
+        label:
+          type: string
+        total_limit:
+          type: string
+        total_used:
+          type: string
+        progress:
+          type: number
+          minimum: 0
+        drilldown_ref:
+          $ref: '#/components/schemas/DrilldownRef'
+    BudgetRing:
+      type: object
+      required: [category, label, limit, used, progress, color_token, drilldown_ref]
+      properties:
+        category:
+          type: string
+        label:
+          type: string
+        limit:
+          type: string
+        used:
+          type: string
+        progress:
+          type: number
+          minimum: 0
+        color_token:
+          type: string
+        drilldown_ref:
+          $ref: '#/components/schemas/DrilldownRef'
+        group_drilldown_ref:
+          allOf:
+            - $ref: '#/components/schemas/DrilldownRef'
+          nullable: true
+    TrendPoint:
+      type: object
+      required: [bucket, income, expense, net_cash_flow, drilldown_ref]
+      properties:
+        bucket:
+          type: string
+        income:
+          type: string
+        expense:
+          type: string
+        net_cash_flow:
+          type: string
+        drilldown_ref:
+          $ref: '#/components/schemas/DrilldownRef'
+    AssetCostPoint:
+      type: object
+      required: [bucket, purchase_cost, maintenance_cost, gross_cost, recovery, net_cash_cost, drilldown_ref]
+      properties:
+        bucket:
+          type: string
+        purchase_cost:
+          type: string
+        maintenance_cost:
+          type: string
+        gross_cost:
+          type: string
+        recovery:
+          type: string
+        net_cash_cost:
+          type: string
+        drilldown_ref:
+          $ref: '#/components/schemas/DrilldownRef'
+    ContainerDrilldown:
+      type: object
+      required: [drilldown_ref]
+      properties:
+        drilldown_ref:
+          $ref: '#/components/schemas/DrilldownRef'
+    FinanceAttentionItem:
+      type: object
+      required: [key, label, detail, count, severity, action, drilldown_ref]
+      properties:
+        key:
+          type: string
+          enum: [import_review, budget_overrun]
+        label:
+          type: string
+        detail:
+          type: string
+        count:
+          type: integer
+          minimum: 1
+        severity:
+          type: string
+          enum: [warning, danger]
+        action:
+          type: string
+          enum: [import, budget]
+        drilldown_ref:
+          allOf:
+            - $ref: '#/components/schemas/DrilldownRef'
+          nullable: true
+    FinanceOverview:
+      type: object
+      required: [period, granularity, summary_cards, attention_items, budget_center, budget_rings, trend_container, trend_points, asset_cost_container, asset_cost_points]
+      properties:
+        period:
+          $ref: '#/components/schemas/Period'
+        granularity:
+          type: string
+          enum: [day, week, month, quarter]
+        summary_cards:
+          type: array
+          items:
+            $ref: '#/components/schemas/SummaryCard'
+        attention_items:
+          type: array
+          items:
+            $ref: '#/components/schemas/FinanceAttentionItem'
+        budget_center:
+          $ref: '#/components/schemas/BudgetCenter'
+        budget_rings:
+          type: array
+          items:
+            $ref: '#/components/schemas/BudgetRing'
+        trend_container:
+          $ref: '#/components/schemas/ContainerDrilldown'
+        trend_points:
+          type: array
+          items:
+            $ref: '#/components/schemas/TrendPoint'
+        asset_cost_container:
+          $ref: '#/components/schemas/ContainerDrilldown'
+        asset_cost_points:
+          type: array
+          items:
+            $ref: '#/components/schemas/AssetCostPoint'
+    FinanceAccount:
+      type: object
+      required: [id, name, account_type, currency, opening_balance, balance, status]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        account_type:
+          type: string
+          enum: [bank, cash, wallet, payment_platform, other]
+        currency:
+          type: string
+          pattern: '^[A-Z]{3}$'
+        opening_balance:
+          type: string
+        balance:
+          type: string
+        status:
+          type: string
+          enum: [active, archived]
+    CreateFinanceAccountRequest:
+      type: object
+      required: [name, account_type]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 80
+        account_type:
+          type: string
+          enum: [bank, cash, wallet, payment_platform, other]
+        currency:
+          type: string
+          pattern: '^[A-Z]{3}$'
+          default: CNY
+        opening_balance:
+          type: string
+          pattern: '^\d+(\.\d{1,4})?$'
+          default: '0'
+    UpdateFinanceAccountRequest:
+      type: object
+      required: [name, account_type]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 80
+        account_type:
+          type: string
+          enum: [bank, cash, wallet, payment_platform, other]
+    FinanceCategory:
+      type: object
+      required: [id, name, direction_scope, color_token, status]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        direction_scope:
+          type: string
+          enum: [income, expense, both]
+        color_token:
+          type: string
+        status:
+          type: string
+          enum: [active, archived]
+    FinanceCategoryWriteRequest:
+      type: object
+      required: [name, direction_scope]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 40
+        direction_scope:
+          type: string
+          enum: [income, expense, both]
+        color_token:
+          type: string
+          minLength: 1
+          maxLength: 32
+          default: violet
+    FinanceBudget:
+      type: object
+      required: [id, category_id, category_name, color_token, cycle, amount, currency, period_start, period_end, used, remaining, progress, status]
+      properties:
+        id:
+          type: string
+          format: uuid
+        category_id:
+          type: string
+          format: uuid
+        category_name:
+          type: string
+        color_token:
+          type: string
+        cycle:
+          type: string
+          enum: [month, quarter, year, custom]
+        amount:
+          type: string
+          pattern: '^\d+(\.\d{1,4})?$'
+        currency:
+          type: string
+          pattern: '^[A-Z]{3}$'
+        period_start:
+          type: string
+          format: date
+        period_end:
+          type: string
+          format: date
+        used:
+          type: string
+        remaining:
+          type: string
+        progress:
+          type: number
+          minimum: 0
+          maximum: 100
+        status:
+          type: string
+          enum: [active, archived]
+    FinanceBudgetWriteRequest:
+      type: object
+      required: [category_id, cycle, amount, period_start, period_end]
+      properties:
+        category_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          maxLength: 80
+          default: ''
+        cycle:
+          type: string
+          enum: [month, quarter, year, custom]
+        amount:
+          type: string
+          pattern: '^\d+(\.\d{1,4})?$'
+        currency:
+          type: string
+          pattern: '^[A-Z]{3}$'
+          default: CNY
+        period_start:
+          type: string
+          format: date
+        period_end:
+          type: string
+          format: date
+    FinanceAsset:
+      type: object
+      required: [id, name, asset_type, status, event_count, gross_cost, recovery, net_cash_cost, last_event_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        asset_type:
+          type: string
+        status:
+          type: string
+          enum: [held, transferred, sold, disposed]
+        event_count:
+          type: integer
+        gross_cost:
+          type: string
+        recovery:
+          type: string
+        net_cash_cost:
+          type: string
+        last_event_at:
+          type: string
+          format: date-time
+          nullable: true
+    FinanceAssetDetail:
+      allOf:
+        - $ref: '#/components/schemas/FinanceAsset'
+        - type: object
+          required: [events]
+          properties:
+            events:
+              type: array
+              items:
+                $ref: '#/components/schemas/AssetEvent'
+    FinanceAssetWriteRequest:
+      type: object
+      required: [name, asset_type]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+        asset_type:
+          type: string
+          minLength: 1
+          maxLength: 60
+    FinanceAssetEventWriteRequest:
+      type: object
+      required: [occurred_at, event_type]
+      properties:
+        occurred_at:
+          type: string
+          format: date-time
+        event_type:
+          type: string
+          enum: [purchase, maintenance, consumable, upgrade, transfer, sale, disposal]
+        amount:
+          type: string
+          pattern: '^\d+(\.\d{1,4})?$'
+          default: '0'
+        recovery_amount:
+          type: string
+          pattern: '^\d+(\.\d{1,4})?$'
+          default: '0'
+        ledger_transaction_id:
+          type: string
+          format: uuid
+          nullable: true
+    FinancePermission:
+      type: object
+      required: [user_id, email, role, can_view, can_bookkeep, can_edit, can_import, can_reconcile, can_export, explicit]
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        email:
+          type: string
+        role:
+          type: string
+          enum: [owner, adult, child, guest]
+        can_view:
+          type: boolean
+        can_bookkeep:
+          type: boolean
+        can_edit:
+          type: boolean
+        can_import:
+          type: boolean
+        can_reconcile:
+          type: boolean
+        can_export:
+          type: boolean
+        explicit:
+          type: boolean
+        granted_at:
+          type: string
+          format: date-time
+          nullable: true
+        revoked_at:
+          type: string
+          format: date-time
+          nullable: true
+    FinanceAiSourceRef:
+      type: object
+      required: [kind, id, label, drilldown_ref]
+      properties:
+        kind:
+          type: string
+          enum: [transaction, source_record, budget, asset_event, period]
+        id:
+          type: string
+        label:
+          type: string
+        drilldown_ref:
+          $ref: '#/components/schemas/DrilldownRef'
+    FinanceAiProposal:
+      type: object
+      required: [id, action_type, status, version, payload]
+      properties:
+        id:
+          type: string
+          format: uuid
+        action_type:
+          type: string
+          enum: [finance_review]
+        status:
+          type: string
+          enum: [proposed, confirmed, rejected, revoked, expired]
+        version:
+          type: integer
+        payload:
+          type: object
+          additionalProperties: true
+    FinanceAiSummaryResponse:
+      type: object
+      required: [insight, proposal]
+      properties:
+        insight:
+          type: object
+          required: [id, insight_type, summary, key_points, explanations, source_refs, provider, created_at]
+          properties:
+            id:
+              type: string
+              format: uuid
+            insight_type:
+              type: string
+              enum: [finance_summary]
+            summary:
+              type: string
+            key_points:
+              type: array
+              items:
+                type: string
+            explanations:
+              type: array
+              items:
+                type: string
+            source_refs:
+              type: array
+              items:
+                $ref: '#/components/schemas/FinanceAiSourceRef'
+            provider:
+              type: string
+            model:
+              type: string
+              nullable: true
+            created_at:
+              type: string
+              format: date-time
+        proposal:
+          $ref: '#/components/schemas/FinanceAiProposal'
+    FinanceAiDecisionRequest:
+      type: object
+      required: [decision, expected_version]
+      properties:
+        decision:
+          type: string
+          enum: [confirm, reject]
+        expected_version:
+          type: integer
+          minimum: 1
+    FinanceAiDecisionResponse:
+      type: object
+      required: [proposal, execution]
+      properties:
+        proposal:
+          $ref: '#/components/schemas/FinanceAiProposal'
+        execution:
+          type: object
+          nullable: true
+          required: [formal_ledger_mutation]
+          properties:
+            formal_ledger_mutation:
+              type: boolean
+              enum: [false]
+    FinancePermissionWriteRequest:
+      type: object
+      required: [can_view, can_bookkeep, can_edit, can_import, can_reconcile, can_export]
+      properties:
+        can_view:
+          type: boolean
+        can_bookkeep:
+          type: boolean
+        can_edit:
+          type: boolean
+        can_import:
+          type: boolean
+        can_reconcile:
+          type: boolean
+        can_export:
+          type: boolean
+    FinanceAuditEntry:
+      type: object
+      required: [id, action, resource_type, trace_id, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        actor_id:
+          type: string
+          format: uuid
+          nullable: true
+        action:
+          type: string
+        resource_type:
+          type: string
+        resource_id:
+          type: string
+          format: uuid
+          nullable: true
+        before_summary:
+          nullable: true
+        after_summary:
+          nullable: true
+        trace_id:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    FinanceExportRequest:
+      type: object
+      required: [start, end]
+      properties:
+        start:
+          type: string
+          format: date
+        end:
+          type: string
+          format: date
+        format:
+          type: string
+          enum: [csv]
+          default: csv
+    FinanceExportJob:
+      type: object
+      required: [id, format, period_start, period_end, status, row_count, download_expires_at, created_at, download_url]
+      properties:
+        id:
+          type: string
+          format: uuid
+        format:
+          type: string
+          enum: [csv]
+        period_start:
+          type: string
+          format: date
+        period_end:
+          type: string
+          format: date
+        status:
+          type: string
+          enum: [queued, running, ready, failed, expired, cancelled]
+        row_count:
+          type: integer
+          minimum: 0
+        download_expires_at:
+          type: string
+          format: date-time
+          nullable: true
+        download_url:
+          type: string
+          nullable: true
+        error_code:
+          type: string
+          nullable: true
+        error_message:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+    FinanceAiConnection:
+      type: object
+      required: [provider, endpoint_url, model, api_key_ref, status, last_tested_at, last_error]
+      properties:
+        provider:
+          type: string
+          enum: [openai_compatible]
+        endpoint_url:
+          type: string
+          format: uri
+        model:
+          type: string
+        api_key_ref:
+          type: string
+        status:
+          type: string
+          enum: [active, disabled, error]
+        last_tested_at:
+          type: string
+          format: date-time
+          nullable: true
+        last_error:
+          type: string
+          nullable: true
+    FinanceAiConnectionWriteRequest:
+      type: object
+      required: [endpoint_url, model, api_key_ref]
+      properties:
+        endpoint_url:
+          type: string
+          format: uri
+        model:
+          type: string
+        api_key_ref:
+          type: string
+          pattern: '^[A-Za-z0-9._:-]{1,120}$'
+        status:
+          type: string
+          enum: [active, disabled]
+          default: active
+    ManualTransactionRequest:
+      type: object
+      required: [direction, occurred_at, amount, account_id]
+      properties:
+        direction:
+          type: string
+          enum: [income, expense, transfer]
+        occurred_at:
+          type: string
+          format: date-time
+        amount:
+          type: string
+          pattern: '^\d+(\.\d{1,4})?$'
+        currency:
+          type: string
+          pattern: '^[A-Z]{3}$'
+          default: CNY
+        account_id:
+          type: string
+          format: uuid
+        to_account_id:
+          type: string
+          format: uuid
+          nullable: true
+        category_id:
+          type: string
+          format: uuid
+          nullable: true
+        merchant:
+          type: string
+          maxLength: 120
+          nullable: true
+        note:
+          type: string
+          maxLength: 500
+          nullable: true
+    TransactionWriteResponse:
+      type: object
+      required: [transaction_id]
+      properties:
+        transaction_id:
+          type: string
+          format: uuid
+    FinanceTransactionListResponse:
+      type: object
+      required: [items, pagination]
+      properties:
+        items:
+          type: array
+          items:
+            allOf:
+              - $ref: '#/components/schemas/TransactionSummary'
+              - type: object
+                required: [origin, status]
+                properties:
+                  origin:
+                    type: string
+                    enum: [import, manual, system]
+                  status:
+                    type: string
+                    enum: [confirmed, pending_account, reversed, voided]
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+    TransactionSummary:
+      type: object
+      required: [id, occurred_at, direction, amount, currency, merchant, category]
+      properties:
+        id:
+          type: string
+          format: uuid
+        occurred_at:
+          type: string
+          format: date-time
+        direction:
+          type: string
+          enum: [income, expense, transfer]
+        amount:
+          type: string
+        currency:
+          type: string
+        merchant:
+          type: string
+        category:
+          type: string
+        source_count:
+          type: integer
+    AssetEvent:
+      type: object
+      required: [id, asset_id, occurred_at, event_type, amount, recovery_amount]
+      properties:
+        id:
+          type: string
+          format: uuid
+        asset_id:
+          type: string
+          format: uuid
+        occurred_at:
+          type: string
+          format: date-time
+        event_type:
+          type: string
+          enum: [purchase, maintenance, consumable, upgrade, transfer, sale, disposal]
+        amount:
+          type: string
+        recovery_amount:
+          type: string
+        ledger_transaction_id:
+          type: string
+          format: uuid
+    TransactionLink:
+      type: object
+      required: [id, link_type, status, confidence]
+      properties:
+        id:
+          type: string
+          format: uuid
+        link_type:
+          type: string
+          enum: [duplicate, parent_settlement, refund_reversal, fee_related, split, unrelated, pending_review]
+        status:
+          type: string
+          enum: [pending_review, confirmed, rejected, revoked]
+        confidence:
+          type: number
+        reason_codes:
+          type: array
+          items:
+            type: string
+    TransactionDetail:
+      allOf:
+        - $ref: '#/components/schemas/TransactionSummary'
+        - type: object
+          required: [origin, status, note, entries, source_records, transaction_links]
+          properties:
+            origin:
+              type: string
+              enum: [import, manual, system]
+            status:
+              type: string
+              enum: [confirmed, pending_account, reversed, voided]
+            note:
+              type: string
+              nullable: true
+            category_id:
+              type: string
+              format: uuid
+              nullable: true
+            entries:
+              type: array
+              items:
+                type: object
+                required: [account_id, amount, entry_side]
+                properties:
+                  account_id:
+                    type: string
+                    format: uuid
+                  amount:
+                    type: string
+                  entry_side:
+                    type: string
+                    enum: [debit, credit]
+            source_records:
+              type: array
+              items:
+                type: object
+                required: [id, source_type, detail_level]
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+                  source_type:
+                    type: string
+                  detail_level:
+                    type: string
+                    enum: [anchor, detail, original]
+                  merchant_detail:
+                    type: string
+                  order_reference:
+                    type: string
+            transaction_links:
+              type: array
+              items:
+                $ref: '#/components/schemas/TransactionLink'
+    FinanceDrilldownResponse:
+      type: object
+      required: [filter, items, pagination]
+      properties:
+        filter:
+          $ref: '#/components/schemas/DrilldownRef'
+        items:
+          type: array
+          items:
+            oneOf:
+              - $ref: '#/components/schemas/TransactionSummary'
+              - $ref: '#/components/schemas/AssetEvent'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+    Pagination:
+      type: object
+      required: [page, page_size, total]
+      properties:
+        page:
+          type: integer
+        page_size:
+          type: integer
+        total:
+          type: integer
+    CreateImportBatchRequest:
+      type: object
+      required: [source_type, file_name, file_size, file_sha256, object_key]
+      properties:
+        source_type:
+          type: string
+          enum: [bank, alipay, wechat, bookkeeping_app, other]
+        file_name:
+          type: string
+        file_size:
+          type: integer
+        file_sha256:
+          type: string
+        object_key:
+          type: string
+    ImportBatch:
+      type: object
+      required: [id, file_name, file_size, source_type, status, version, raw_retention_until]
+      properties:
+        id:
+          type: string
+          format: uuid
+        file_name:
+          type: string
+        file_size:
+          type: integer
+          minimum: 0
+        source_type:
+          type: string
+        status:
+          type: string
+          enum: [created, uploaded, scanning, header_detected, mapping_pending, normalized, matching, reconciliation_pending, confirmed, committed, failed, cancelled, revoked]
+        version:
+          type: integer
+        detected_header_row:
+          type: integer
+        detected_sheet:
+          type: string
+        raw_retention_until:
+          type: string
+          format: date-time
+        counts:
+          type: object
+          additionalProperties:
+            type: integer
+        header_preview:
+          $ref: '#/components/schemas/ImportHeaderPreview'
+    ImportHeaderPreview:
+      type: object
+      required: [sheets]
+      properties:
+        sheets:
+          type: array
+          items:
+            type: object
+            required: [preview_rows]
+            properties:
+              sheet_name:
+                type: string
+                nullable: true
+              header_row:
+                type: integer
+                nullable: true
+              data_start_row:
+                type: integer
+                nullable: true
+              header_score:
+                type: integer
+              field_mapping:
+                type: object
+                additionalProperties:
+                  type: string
+              skipped_rows:
+                type: integer
+              preview_rows:
+                type: array
+                items:
+                  type: object
+                  required: [row_number, values, role]
+                  properties:
+                    row_number:
+                      type: integer
+                    values:
+                      type: array
+                      items:
+                        type: string
+                    role:
+                      type: string
+                      enum: [blank, metadata, header, data]
+    HeaderConfirmation:
+      type: object
+      required: [sheet_name, header_row, data_start_row]
+      properties:
+        sheet_name:
+          type: string
+        header_row:
+          type: integer
+          minimum: 1
+        data_start_row:
+          type: integer
+          minimum: 1
+        data_end_row:
+          type: integer
+          minimum: 1
+    FieldMappingConfirmation:
+      type: object
+      required: [mapping, parser_version]
+      properties:
+        mapping:
+          type: object
+          additionalProperties:
+            type: string
+        parser_version:
+          type: string
+    ReconciliationResponse:
+      type: object
+      required: [batch_id, candidates, pagination]
+      properties:
+        batch_id:
+          type: string
+          format: uuid
+        candidates:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReconciliationCandidate'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+    ReconciliationCandidate:
+      type: object
+      required: [id, recommended_link_type, status, confidence, reason_codes, records]
+      properties:
+        id:
+          type: string
+          format: uuid
+        recommended_link_type:
+          type: string
+          enum: [duplicate, parent_settlement, refund_reversal, fee_related, split, unrelated, pending_review]
+        status:
+          type: string
+          enum: [pending_review, confirmed, rejected, revoked]
+        confidence:
+          type: number
+        reason_codes:
+          type: array
+          items:
+            type: string
+        records:
+          type: array
+          items:
+            type: object
+            required: [id, source_type, occurred_at, direction, amount]
+            properties:
+              id:
+                type: string
+                format: uuid
+              source_type:
+                type: string
+              occurred_at:
+                type: string
+                format: date-time
+              direction:
+                type: string
+              amount:
+                type: string
+              merchant_detail:
+                type: string
+    ReconciliationDecisionRequest:
+      type: object
+      required: [candidate_id, decision, expected_version]
+      properties:
+        candidate_id:
+          type: string
+          format: uuid
+        decision:
+          type: string
+          enum: [duplicate, parent_settlement, refund_reversal, fee_related, split, unrelated]
+        expected_version:
+          type: integer
+        reason:
+          type: string
+    CommitImportRequest:
+      type: object
+      required: [expected_version, confirm_summary_hash]
+      properties:
+        expected_version:
+          type: integer
+        confirm_summary_hash:
+          type: string
+    CommitImportResponse:
+      type: object
+      required: [batch, inserted_transactions, linked_records, pending_records, failed_records]
+      properties:
+        batch:
+          $ref: '#/components/schemas/ImportBatch'
+        inserted_transactions:
+          type: integer
+        linked_records:
+          type: integer
+        pending_records:
+          type: integer
+        failed_records:
+          type: integer
+    ErrorResponse:
+      type: object
+      required: [code, message, trace_id]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        trace_id:
+          type: string

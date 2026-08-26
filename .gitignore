@@ -1,0 +1,15 @@
+node_modules/
+dist/
+output/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+data/
+*.sqlite
+*.sqlite3
+*.db
+*.dump
+.env
+.env.*
+!.env.example
+.DS_Store
