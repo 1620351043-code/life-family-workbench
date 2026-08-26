@@ -27,7 +27,7 @@
 | 设计系统 | 总体 UI 设计系统已收口为淡粉淡紫 + iOS 层级 + Liquid Glass 功能层，并补齐自适应容器、多预算重排、容器感知字号和长内容规则 | 页面垂直切片只能复用统一令牌、Adaptive Layout 原语和组件行为 |
 | 测试 | API 14/14、类型检查、OpenAPI 校验、迁移烟测、真实四份账单回放和 430/320 移动端验收均可运行 | 原生隔离 PostgreSQL、COS/AI live smoke、正式会话和服务器部署仍是发布闸门 |
 | CI | GitHub Actions `quality-gate` 已在 `e5a598e` 落地，并在远端提交 `f8085ed` 的运行 `32972907305` 中全绿 | CI 已真实触发并通过；`quality-gate` 尚未能设置为 `main` 的 required check，原因是当前私有仓库计划限制 |
-| 版本控制 | 已建立首次基线提交 `8bd7793`；分支、提交、审查、合并规范已在 `18051e0` 落地；远端已绑定并推送 `main` | Squash merge、关闭普通 Merge/Rebase、合并后删除分支已配置；`main` 强制保护待升级计划或改变仓库可见性 |
+| 版本控制 | 已建立首次基线提交 `8bd7793`；分支、提交、审查、合并规范已在 `18051e0` 落地；公开远端已绑定并推送 `main` | Squash merge、关闭普通 Merge/Rebase、合并后删除分支已配置；`main` Branch Protection 已启用并要求 `quality-gate` |
 
 ## 3. 当前主要风险
 

@@ -41,9 +41,9 @@ npm run web:build
 origin https://github.com/1620351043-code/life-family-workbench.git
 ```
 
-仓库合并策略已配置为：仅允许 Squash merge，关闭普通 Merge/Rebase，合并后自动删除短生命周期分支。GitHub Actions `quality-gate` 已在提交 `f8085ed` 对应的远端运行中全部通过。
+仓库已公开，且已具备 Branch Protection 和 Rulesets 能力。当前仓库合并策略为：仅允许 Squash merge，关闭普通 Merge/Rebase，合并后自动删除短生命周期分支。GitHub Actions `quality-gate` 已在提交 `c5f3a07` 对应的远端运行中全部通过。
 
-传统 Branch Protection 和 Rulesets API 均返回 HTTP 403：当前账号的 GitHub 个人私有仓库计划不支持该能力。因此“远端 `main` 已受保护”仍不能确认。保留私有仓库需要升级 GitHub Pro；如果不升级，另一种方案是将仓库改为公开，但不得在没有明确授权的情况下改变可见性。
+`main` 已按本文件配置为：禁止直接 push、force push 和删除；要求 Pull Request、至少 1 名独立审查者、解决全部审查对话、`quality-gate` 通过和线性历史；管理员也受保护规则约束。
 
 ## 远端配置完成后的验证
 

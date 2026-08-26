@@ -229,7 +229,7 @@ npm run production:preflight
 |---|---|---|---|
 | A-001 | 建立首次 Git 提交 | `DONE` | 首次基线提交 `8bd7793` 已纳入预期源码和文档；提交后类型检查、构建、API 测试、OpenAPI 校验和迁移烟测通过 |
 | A-002 | 审查 `.gitignore` | `DONE` | 已忽略 `.env`、生成输出、Python 缓存、本地数据和数据库文件；staged 清单未包含敏感数据、真实账单或构建产物 |
-| A-003 | 建立分支和提交规范 | `PARTIAL` | 仓库规范已由提交 `18051e0` 落地，远端 `origin` 已绑定并推送 `main`；Squash merge、关闭普通 Merge/Rebase、合并后删除分支已配置；传统 Branch Protection 和 Rulesets 均因当前 GitHub 私有仓库计划返回 HTTP 403，`main` 强制保护尚未生效 |
+| A-003 | 建立分支和提交规范 | `DONE` | 仓库规范已由提交 `18051e0` 落地，公开远端 `origin` 已绑定并推送 `main`；Squash merge、关闭普通 Merge/Rebase、合并后删除分支已配置；`main` Branch Protection 已启用，要求 `quality-gate`、1 名独立审查者、线性历史和解决审查对话 |
 | A-004 | 建立 CI | `DONE` | GitHub Actions `quality-gate` 已由提交 `e5a598e` 落地；远端运行 `32972907305`（提交 `f8085ed`）全绿，`npm ci`、类型检查、API 14/14、OpenAPI、迁移 smoke 和 Web 构建均通过 |
 | A-005 | 建立版本号和发布 Tag | `NOT_STARTED` | staging/production 发布可追溯到唯一 commit |
 | A-006 | 建立回滚清单 | `NOT_STARTED` | 前端、API、迁移和 worker 均有回滚步骤 |
@@ -576,10 +576,10 @@ npm run production:preflight
 
 下一轮默认从以下任务开始，除非用户明确调整优先级：
 
-1. `A-003` 收口：升级 GitHub Pro 或明确授权将仓库公开后，配置并验证 `main` 强制保护。
-2. `A-005`：建立版本号和 staging/production 发布 Tag 规则。
-3. `A-006`：建立前端、API、迁移和 worker 回滚清单。
-4. `B-004`、`B-005`：完成移动端登录和注册/创建家庭垂直切片。
+1. `A-005`：建立版本号和 staging/production 发布 Tag 规则。
+2. `A-006`：建立前端、API、迁移和 worker 回滚清单。
+3. `B-004`、`B-005`：完成移动端登录和注册/创建家庭垂直切片。
+4. `B-011`：建立正式身份移动端 E2E，替换当前仅无权限态的财务截图证据。
 
 在 `B-011` 完成前，不应把财务移动端标记为生产闭环。
 
@@ -625,3 +625,4 @@ npm run production:preflight
 | v0.3 | 2026-08-26 | 完成 A-003 仓库内协作规范、Pull Request 模板和主分支保护配置说明；因当前无 remote，远端保护验证保留为未关闭项 | A-003 `PARTIAL` |
 | v0.4 | 2026-08-26 | 完成 A-004 GitHub Actions `quality-gate` workflow 和本地 CI 等价验证；因当前无 remote，远端触发和 required check 验证保留为未关闭项 | A-004 `PARTIAL` |
 | v0.5 | 2026-08-26 | 绑定 GitHub 私有远端并推送 `main`；修复 PGlite CI 临时路径问题；远端 `quality-gate` 运行 `32972907305` 全绿；配置合并策略；分支强制保护因 GitHub 计划限制保留为未关闭项 | A-004 `DONE`，A-003 `PARTIAL` |
+| v0.6 | 2026-08-26 | 经用户授权将仓库公开；确认远端无真实账单、私有文件或密钥；完成 `main` Branch Protection 配置并要求 `quality-gate`、独立审查和线性历史 | A-003、A-004 `DONE` |
