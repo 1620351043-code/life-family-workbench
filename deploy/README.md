@@ -2,6 +2,8 @@
 
 以下命令必须在目标服务器执行；本地没有数据库、COS 凭据时不能代替执行。
 
+发布前必须阅读：[生产发布与回滚清单](./ROLLBACK.md)。该清单已建立 A-006 的回滚路径，但真实服务器备份恢复和回滚演练仍需在 staging 完成。
+
 ## 1. 数据库迁移
 
 使用只用于迁移的管理员连接执行：
@@ -28,7 +30,7 @@ npm run production:preflight
 
 ## 3. 服务与 worker
 
-运行三个长期进程/定时任务：
+开发阶段可用以下入口验证；生产环境必须使用已验证的构建产物和 systemd/supervisor/timer 守护，不得把 `api:dev` 当作生产启动命令：
 
 ```bash
 npm run api:dev
@@ -36,7 +38,7 @@ npm run finance:export-worker
 npm run finance:retention-worker
 ```
 
-生产环境应由 systemd、supervisor 或等价守护方式托管，并为导出 worker、保留期清理 worker 配置失败告警。API 对外只经 HTTPS 反向代理，不能直接暴露 3100 端口。
+当前导出 worker 和保留期 worker 是一次性批处理入口，应由 systemd timer 或等价调度周期性触发，并为导入、导出、保留期清理配置失败告警。API 对外只经 HTTPS 反向代理，不能直接暴露 3100 端口。
 
 ## 4. 发布验收
 

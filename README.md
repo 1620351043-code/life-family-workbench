@@ -12,6 +12,7 @@
 - 分支、提交、审查和合并规范：`CONTRIBUTING.md`
 - `main` 主分支保护配置：`.github/BRANCH_PROTECTION.md`
 - 版本号、staging/production Tag 和发布追溯规则：`RELEASE.md`
+- 生产发布、前端/API/迁移/worker 回滚清单：`deploy/ROLLBACK.md`
 - 财务生产发布闸门复审：`outputs/Life-财务生产发布闸门复审报告-v0.4.md`
 - API 契约：`api/Life-家庭生活工作台-OpenAPI-v0.1.yaml`
 - 数据库迁移：`db/migrations/`
