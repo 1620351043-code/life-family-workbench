@@ -26,8 +26,8 @@
 | 前端 | `ui/app/` 已有 React/TypeScript 移动端骨架；家庭空间、财务首页、记账、账户/预算、资产、权限、导入/关联审核和 AI 入口已按切片接入 | 吃什么/更多仍需按后续切片完成；所有页面继续复用统一设计系统 |
 | 设计系统 | 总体 UI 设计系统已收口为淡粉淡紫 + iOS 层级 + Liquid Glass 功能层，并补齐自适应容器、多预算重排、容器感知字号和长内容规则 | 页面垂直切片只能复用统一令牌、Adaptive Layout 原语和组件行为 |
 | 测试 | API 14/14、类型检查、OpenAPI 校验、迁移烟测、真实四份账单回放和 430/320 移动端验收均可运行 | 原生隔离 PostgreSQL、COS/AI live smoke、正式会话和服务器部署仍是发布闸门 |
-| CI | GitHub Actions `quality-gate` 已在 `e5a598e` 落地，自动执行 `npm ci`、类型检查、API 测试、OpenAPI、迁移 smoke 和 Web 构建 | 当前仓库尚无 remote，CI 尚未在远端实际触发，也尚未设置为 `main` 的 required check |
-| 版本控制 | 已建立首次基线提交 `8bd7793`；分支、提交、审查和合并规范已在 `18051e0` 落地 | 当前仓库尚无 remote，`main` 远端保护待绑定仓库后验证 |
+| CI | GitHub Actions `quality-gate` 已在 `e5a598e` 落地，并在远端提交 `f8085ed` 的运行 `32972907305` 中全绿 | CI 已真实触发并通过；`quality-gate` 尚未能设置为 `main` 的 required check，原因是当前私有仓库计划限制 |
+| 版本控制 | 已建立首次基线提交 `8bd7793`；分支、提交、审查、合并规范已在 `18051e0` 落地；远端已绑定并推送 `main` | Squash merge、关闭普通 Merge/Rebase、合并后删除分支已配置；`main` 强制保护待升级计划或改变仓库可见性 |
 
 ## 3. 当前主要风险
 

@@ -35,13 +35,15 @@ npm run web:build
 
 ## 当前状态
 
-当前本地仓库没有配置 remote：
+当前仓库已绑定 remote 并推送 `main`：
 
 ```bash
-git remote -v
+origin https://github.com/1620351043-code/life-family-workbench.git
 ```
 
-因此本文件已经确定保护策略，但“远端 `main` 已受保护”尚不能在当前环境中验证。绑定 GitHub/GitLab 等远端后，由仓库管理员按本文件配置并将设置页面或 API 返回结果作为 A-003 的最终证据。
+仓库合并策略已配置为：仅允许 Squash merge，关闭普通 Merge/Rebase，合并后自动删除短生命周期分支。GitHub Actions `quality-gate` 已在提交 `f8085ed` 对应的远端运行中全部通过。
+
+传统 Branch Protection 和 Rulesets API 均返回 HTTP 403：当前账号的 GitHub 个人私有仓库计划不支持该能力。因此“远端 `main` 已受保护”仍不能确认。保留私有仓库需要升级 GitHub Pro；如果不升级，另一种方案是将仓库改为公开，但不得在没有明确授权的情况下改变可见性。
 
 ## 远端配置完成后的验证
 
