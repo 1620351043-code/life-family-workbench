@@ -207,7 +207,7 @@ npm run production:preflight
 
 | Gate | 闸门 | 当前状态 | 放行标准 |
 |---|---|---|---|
-| G0 | 版本与回滚基线 | `NOT_STARTED` | 首次提交、CI、版本号、Tag、回滚点齐全 |
+| G0 | 版本与回滚基线 | `PARTIAL` | 首次提交、CI、版本号、Tag、回滚清单齐全；真实 staging 回滚点和演练仍待完成 |
 | G1 | 正式认证和家庭闭环 | `PARTIAL` | 移动端注册/登录/退出/重置/家庭/成员/邀请全部通过 |
 | G2 | 家庭租户隔离 | `PARTIAL` | 原生 PostgreSQL、真实会话、跨家庭和异步任务隔离通过 |
 | G3 | 家庭空间 P0 | `PARTIAL` | PRD 主题、状态、回复、筛选、AI 行动全部闭环 |
@@ -232,7 +232,7 @@ npm run production:preflight
 | A-003 | 建立分支和提交规范 | `DONE` | 仓库规范已由提交 `18051e0` 落地，公开远端 `origin` 已绑定并推送 `main`；Squash merge、关闭普通 Merge/Rebase、合并后删除分支已配置；`main` Branch Protection 已启用，要求 `quality-gate`、线性历史和解决审查对话，当前不强制额外审核账号（`required_approving_review_count=0`，经用户明确授权） |
 | A-004 | 建立 CI | `DONE` | GitHub Actions `quality-gate` 已由提交 `e5a598e` 落地；远端运行 `32972907305`（提交 `f8085ed`）全绿，`npm ci`、类型检查、API 14/14、OpenAPI、迁移 smoke 和 Web 构建均通过 |
 | A-005 | 建立版本号和发布 Tag | `DONE` | `RELEASE.md`、`release:check` 和 Tag 触发 CI 已通过 PR #1 squash 合并到 `main`（合并提交 `42aa34c`）；稳定 Tag/RC Tag 正例与错误反例已验证；当前不创建正式发布 Tag |
-| A-006 | 建立回滚清单 | `NOT_STARTED` | 前端、API、迁移和 worker 均有回滚步骤 |
+| A-006 | 建立回滚清单 | `DONE` | `deploy/ROLLBACK.md` 已覆盖前端、API、前向迁移、解析/导出/保留期 worker、COS、发布单和回滚后验收；真实服务器演练另由 I-012～I-016 验收 |
 
 ### 7.2 B：认证、账户和家庭
 
@@ -405,9 +405,9 @@ npm run production:preflight
 - [x] `A-002` `.gitignore` 和敏感文件审查
 - [x] `A-004` CI
 - [x] `A-005` 版本与 Tag 规则
-- [ ] `A-006` 回滚清单
+- [x] `A-006` 回滚清单
 
-阶段出口：任何变更都可追踪、可测试、可回滚。
+阶段出口：任何变更都有可追踪的发布点和回滚路径；真实服务器回滚演练仍是后续发布闸门。
 
 ### Phase 1：正式身份与家庭基础
 
@@ -576,9 +576,9 @@ npm run production:preflight
 
 下一轮默认从以下任务开始，除非用户明确调整优先级：
 
-1. `A-006`：建立前端、API、迁移和 worker 回滚清单。
-2. `B-004`、`B-005`：完成移动端登录和注册/创建家庭垂直切片。
-3. `B-011`：建立正式身份移动端 E2E，替换当前仅无权限态的财务截图证据。
+1. `B-004`、`B-005`：完成移动端登录和注册/创建家庭垂直切片。
+2. `B-011`：建立正式身份移动端 E2E，替换当前仅无权限态的财务截图证据。
+3. `I-012`～`I-015`：建立备份、恢复、容量、发布和回滚演练证据。
 
 在 `B-011` 完成前，不应把财务移动端标记为生产闭环。
 
@@ -626,3 +626,4 @@ npm run production:preflight
 | v0.5 | 2026-08-26 | 绑定 GitHub 私有远端并推送 `main`；修复 PGlite CI 临时路径问题；远端 `quality-gate` 运行 `32972907305` 全绿；配置合并策略；分支强制保护因 GitHub 计划限制保留为未关闭项 | A-004 `DONE`，A-003 `PARTIAL` |
 | v0.6 | 2026-08-26 | 经用户授权将仓库公开；确认远端无真实账单、私有文件或密钥；完成 `main` Branch Protection 配置并要求 `quality-gate`、线性历史和解决审查对话；审核批准数按用户授权设为 0 | A-003、A-004 `DONE` |
 | v0.7 | 2026-08-26 | 在 `codex/release-tag-policy` 分支建立 SemVer、staging RC、production 稳定 Tag、版本校验和 Tag CI 触发规则；本地和远端质量闸门通过；PR #1 已 squash 合并到 `main` | A-005 `DONE`，当前未创建正式发布 Tag |
+| v0.8 | 2026-08-26 | 建立 `deploy/ROLLBACK.md`，覆盖前端、API、数据库迁移、解析/导出/保留期 worker、COS、发布单、回滚后验收和不可逆数据边界；同步部署入口与清单状态 | A-006 `DONE`；真实服务器回滚演练待 I-012～I-016 |

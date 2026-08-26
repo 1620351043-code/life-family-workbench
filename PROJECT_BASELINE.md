@@ -26,7 +26,7 @@
 | 前端 | `ui/app/` 已有 React/TypeScript 移动端骨架；家庭空间、财务首页、记账、账户/预算、资产、权限、导入/关联审核和 AI 入口已按切片接入 | 吃什么/更多仍需按后续切片完成；所有页面继续复用统一设计系统 |
 | 设计系统 | 总体 UI 设计系统已收口为淡粉淡紫 + iOS 层级 + Liquid Glass 功能层，并补齐自适应容器、多预算重排、容器感知字号和长内容规则 | 页面垂直切片只能复用统一令牌、Adaptive Layout 原语和组件行为 |
 | 测试 | API 14/14、类型检查、OpenAPI 校验、迁移烟测、真实四份账单回放和 430/320 移动端验收均可运行 | 原生隔离 PostgreSQL、COS/AI live smoke、正式会话和服务器部署仍是发布闸门 |
-| 发布 | `RELEASE.md` 已定义 SemVer、staging RC Tag、production 稳定 Tag、Tag 校验和 commit 追溯；`release:check` 已接入 CI Tag 触发 | A-005 已通过 PR #1 squash 合并到 `main`；当前未创建正式发布 Tag |
+| 发布 | `RELEASE.md` 已定义 SemVer、staging RC Tag、production 稳定 Tag、Tag 校验和 commit 追溯；`release:check` 已接入 CI Tag 触发；`deploy/ROLLBACK.md` 已建立前端/API/迁移/worker 回滚边界 | A-005 已通过 PR #1 squash 合并到 `main`；A-006 清单已建立；当前未创建正式发布 Tag，真实回滚演练待 staging |
 | CI | GitHub Actions `quality-gate` 已在 `e5a598e` 落地，并在远端提交 `c5f3a07` 的运行 `32973176792` 中全绿 | CI 已真实触发并通过；`quality-gate` 已设置为 `main` 的 required check |
 | 版本控制 | 已建立首次基线提交 `8bd7793`；分支、提交、审查、合并规范已在 `18051e0` 落地；公开远端已绑定并推送 `main` | Squash merge、关闭普通 Merge/Rebase、合并后删除分支已配置；`main` Branch Protection 已启用并要求 `quality-gate` |
 
