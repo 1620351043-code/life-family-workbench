@@ -6,7 +6,7 @@
 
 1. 禁止直接 push，只允许通过 Pull Request 合并。
 2. 禁止 force push 和删除分支。
-3. Pull Request 至少需要 1 名独立审查者批准；作者不能用自己的批准替代审查。
+3. 当前首期不强制额外审查账号（`required_approving_review_count=0`）；如后续增加协作者，应再提升为独立审查要求。
 4. 必须通过所有 required status checks 后才能合并。
 5. 必须解决全部审查对话；禁止绕过检查直接合并。
 6. 使用 Squash merge；合并后删除短生命周期工作分支。
@@ -43,7 +43,7 @@ origin https://github.com/1620351043-code/life-family-workbench.git
 
 仓库已公开，且已具备 Branch Protection 和 Rulesets 能力。当前仓库合并策略为：仅允许 Squash merge，关闭普通 Merge/Rebase，合并后自动删除短生命周期分支。GitHub Actions `quality-gate` 已在提交 `c5f3a07` 对应的远端运行中全部通过。
 
-`main` 已按本文件配置为：禁止直接 push、force push 和删除；要求 Pull Request、至少 1 名独立审查者、解决全部审查对话、`quality-gate` 通过和线性历史；管理员也受保护规则约束。
+`main` 已按本文件配置为：禁止直接 push、force push 和删除；要求 Pull Request、解决全部审查对话、`quality-gate` 通过和线性历史；当前不强制额外审核账号（`required_approving_review_count=0`），管理员也受保护规则约束。
 
 ## 远端配置完成后的验证
 
