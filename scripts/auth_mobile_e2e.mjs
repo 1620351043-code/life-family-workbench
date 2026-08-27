@@ -4,6 +4,7 @@ import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 const { chromium } = require("/Users/wrt/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright-core");
 const baseUrl = process.env.MOBILE_BASE_URL ?? "http://127.0.0.1:4173";
+const apiBaseUrl = process.env.MOBILE_API_BASE_URL ?? "http://127.0.0.1:3100";
 const cdpUrl = process.env.CDP_URL ?? "http://127.0.0.1:9223";
 const outputDir = "output/playwright/auth-vertical";
 const seededEmail = process.env.MOBILE_E2E_EMAIL ?? "mobile-e2e@example.invalid";
@@ -90,7 +91,56 @@ try {
     await registrationPage.locator(".identity-card").getByText("星光小兔之家", { exact: true }).waitFor();
     await registrationPage.getByRole("button", { name: "退出登录" }).click();
     await registrationPage.getByRole("button", { name: "进入我的家庭" }).waitFor();
-    results.push({ registration: true, relogin: true, logout: true, registrationEmail, household: "星光小兔之家", ...registrationAudit });
+
+    await registrationPage.getByRole("button", { name: "忘记密码？" }).click();
+    await registrationPage.locator('input[name="email"]').fill(registrationEmail);
+    await registrationPage.getByRole("button", { name: "发送重置链接" }).click();
+    await registrationPage.getByText("请检查你的邮箱", { exact: true }).waitFor();
+    await registrationPage.screenshot({ path: `${outputDir}/reset-requested-430x932.png`, fullPage: false });
+    const tokenResponse = await registrationPage.request.get(`${apiBaseUrl}/__e2e/password-reset-token?email=${encodeURIComponent(registrationEmail)}`);
+    if (!tokenResponse.ok()) throw new Error(`password reset token unavailable: ${tokenResponse.status()}`);
+    const resetToken = (await tokenResponse.json()).token;
+    await registrationPage.goto(`${baseUrl}/?reset_token=${encodeURIComponent(resetToken)}`, { waitUntil: "networkidle" });
+    await registrationPage.getByText("设置一个新密码", { exact: true }).waitFor();
+    const resetAudits = [];
+    for (const viewport of viewports) {
+      await registrationPage.setViewportSize({ width: viewport.width, height: viewport.height });
+      const layout = await auditAuthLayout(registrationPage);
+      if (layout.rootScrollWidth > layout.rootWidth) throw new Error(`reset ${viewport.name}: horizontal overflow ${layout.rootScrollWidth} > ${layout.rootWidth}`);
+      if (layout.narrowControls.length) throw new Error(`reset ${viewport.name}: control below 44pt ${JSON.stringify(layout.narrowControls)}`);
+      await registrationPage.screenshot({ path: `${outputDir}/reset-layout-${viewport.name}.png`, fullPage: false });
+      resetAudits.push({ viewport, ...layout });
+    }
+    await registrationPage.setViewportSize({ width: 430, height: 932 });
+    await registrationPage.locator('input[name="new-password"]').fill("renewed-family-password");
+    await registrationPage.locator('input[name="confirm-password"]').fill("renewed-family-password");
+    const resetAudit = await auditAuthLayout(registrationPage);
+    if (resetAudit.rootScrollWidth > resetAudit.rootWidth) throw new Error(`reset: horizontal overflow ${resetAudit.rootScrollWidth} > ${resetAudit.rootWidth}`);
+    if (resetAudit.narrowControls.length) throw new Error(`reset: control below 44pt ${JSON.stringify(resetAudit.narrowControls)}`);
+    await registrationPage.screenshot({ path: `${outputDir}/reset-password-430x932.png`, fullPage: false });
+    await registrationPage.getByRole("button", { name: "更新密码" }).click();
+    await registrationPage.getByText("密码已经更新", { exact: true }).waitFor();
+    await registrationPage.screenshot({ path: `${outputDir}/reset-complete-430x932.png`, fullPage: false });
+    await registrationPage.getByRole("button", { name: "使用新密码登录" }).click();
+    await registrationPage.getByRole("button", { name: "进入我的家庭" }).waitFor();
+    await registrationPage.locator('input[name="email"]').fill(registrationEmail);
+    await registrationPage.locator('input[name="password"]').fill("new-family-password");
+    await registrationPage.getByRole("button", { name: "进入我的家庭" }).click();
+    await Promise.race([
+      registrationPage.locator(".auth-message").waitFor(),
+      registrationPage.getByRole("navigation", { name: "主导航" }).waitFor(),
+    ]);
+    if (await registrationPage.getByRole("navigation", { name: "主导航" }).isVisible().catch(() => false)) throw new Error("old password remained valid after reset");
+    const oldPasswordError = await registrationPage.locator(".auth-message").textContent();
+    if (!oldPasswordError?.includes("邮箱或密码不正确")) throw new Error(`unexpected old-password response: ${oldPasswordError}`);
+    await registrationPage.locator('input[name="password"]').fill("renewed-family-password");
+    await registrationPage.getByRole("button", { name: "进入我的家庭" }).click();
+    await registrationPage.getByRole("navigation", { name: "主导航" }).waitFor();
+    await registrationPage.getByRole("button", { name: "更多" }).click();
+    await registrationPage.locator(".identity-card").getByText("星光小兔之家", { exact: true }).waitFor();
+    await registrationPage.getByRole("button", { name: "退出登录" }).click();
+    await registrationPage.getByRole("button", { name: "进入我的家庭" }).waitFor();
+    results.push({ registration: true, relogin: true, passwordReset: true, oldPasswordRevoked: true, logout: true, registrationEmail, household: "星光小兔之家", ...registrationAudit, resetAudit, resetAudits });
   } finally {
     await registrationPage.close();
     await registrationContext.close();

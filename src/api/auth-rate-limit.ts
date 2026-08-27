@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-export type AuthRateLimitOperation = "login" | "register";
+export type AuthRateLimitOperation = "login" | "register" | "password_reset_request" | "password_reset_confirm";
 export type AuthRateLimitInput = { operation: AuthRateLimitOperation; email: string; ipAddress?: string | null };
 export type AuthRateLimitDecision = { allowed: boolean; retryAfterSeconds: number };
 
@@ -16,6 +16,8 @@ type Entry = { failures: number; windowStartedAt: number; blockedUntil: number; 
 export type InMemoryAuthAttemptLimiterOptions = {
   login?: Partial<LimitRule>;
   register?: Partial<LimitRule>;
+  password_reset_request?: Partial<LimitRule>;
+  password_reset_confirm?: Partial<LimitRule>;
   maxEntries?: number;
   now?: () => number;
 };
@@ -23,6 +25,8 @@ export type InMemoryAuthAttemptLimiterOptions = {
 const DEFAULT_RULES: Record<AuthRateLimitOperation, LimitRule> = {
   login: { maxFailures: 5, windowMs: 15 * 60_000, blockMs: 15 * 60_000 },
   register: { maxFailures: 5, windowMs: 60 * 60_000, blockMs: 60 * 60_000 },
+  password_reset_request: { maxFailures: 3, windowMs: 60 * 60_000, blockMs: 60 * 60_000 },
+  password_reset_confirm: { maxFailures: 5, windowMs: 15 * 60_000, blockMs: 15 * 60_000 },
 };
 
 function secondsUntil(timestamp: number, now: number) {
@@ -39,6 +43,8 @@ export class InMemoryAuthAttemptLimiter implements AuthAttemptLimiter {
     this.rules = {
       login: { ...DEFAULT_RULES.login, ...options.login },
       register: { ...DEFAULT_RULES.register, ...options.register },
+      password_reset_request: { ...DEFAULT_RULES.password_reset_request, ...options.password_reset_request },
+      password_reset_confirm: { ...DEFAULT_RULES.password_reset_confirm, ...options.password_reset_confirm },
     };
     this.maxEntries = Math.max(100, options.maxEntries ?? 10_000);
     this.now = options.now ?? Date.now;

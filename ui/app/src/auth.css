@@ -45,6 +45,11 @@
 .auth-state-icon { display: grid; place-items: center; width: 58px; height: 58px; margin: 0 auto 16px; border-radius: 20px; background: linear-gradient(145deg, #ded8ff, #ffe8ef); color: var(--life-accent-strong); font-size: 27px; }
 .auth-recovery h2 { font-size: var(--life-text-title); }
 .auth-recovery p { margin: 10px auto 18px; color: var(--life-text-secondary); font-size: var(--life-text-supporting); line-height: 1.6; }
+.auth-recovery-form { margin-top: 0; }
+.auth-recovery-form .auth-state-icon { margin-bottom: 0; }
+.auth-state-copy { text-align: center; }
+.auth-state-copy h2 { font-size: var(--life-text-title); }
+.auth-state-copy p { max-width: 320px; margin: 8px auto 2px; color: var(--life-text-secondary); font-size: var(--life-text-supporting); line-height: 1.55; text-wrap: pretty; }
 
 .auth-loading { align-items: center; justify-content: center; text-align: center; }
 .auth-loading-mark { display: grid; place-items: center; width: 112px; height: 112px; margin-bottom: 22px; border-radius: 38px; background: linear-gradient(145deg, rgba(219,213,255,.96), rgba(255,230,239,.96)); box-shadow: var(--life-shadow-float); }

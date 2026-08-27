@@ -214,6 +214,8 @@ export const authApi = {
   getMe: () => request<AuthIdentity>("/api/me"),
   login: (email: string, password: string) => request<AuthIdentity>("/api/auth/login", { method: "POST", body: JSON.stringify({ email, password }) }),
   register: (email: string, password: string, householdName: string) => request<AuthIdentity>("/api/auth/register", { method: "POST", body: JSON.stringify({ email, password, household_name: householdName }) }),
+  requestPasswordReset: (email: string) => request<{ ok: true; message: string }>("/api/auth/password-reset/request", { method: "POST", body: JSON.stringify({ email }) }),
+  confirmPasswordReset: (token: string, password: string) => request<{ ok: true; message: string }>("/api/auth/password-reset/confirm", { method: "POST", body: JSON.stringify({ token, password }) }),
   logout: () => request<{ ok: boolean }>("/api/auth/logout", { method: "POST" }),
 };
 

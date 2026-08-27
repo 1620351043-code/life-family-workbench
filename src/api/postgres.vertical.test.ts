@@ -11,6 +11,7 @@ import { runQueuedFinanceExportWorker } from "./finance-export-worker.js";
 import { runFinanceRetentionForHousehold } from "./finance-retention-worker.js";
 import { SqlAuthStore, hashPassword } from "./auth.js";
 import { InMemoryAuthAttemptLimiter } from "./auth-rate-limit.js";
+import type { PasswordResetDelivery, PasswordResetDeliveryMessage } from "./password-reset-delivery.js";
 import type { ParsedImportResult } from "./finance-import-parser.js";
 
 const householdA = "00000000-0000-0000-0000-0000000000a1";
@@ -22,6 +23,11 @@ const memberA = "20000000-0000-0000-0000-0000000000a1";
 const memberB = "20000000-0000-0000-0000-0000000000b1";
 const memberC = "20000000-0000-0000-0000-0000000000c1";
 const scopeA = { householdId: householdA, userId: userA };
+
+class MemoryPasswordResetDelivery implements PasswordResetDelivery {
+  readonly messages: PasswordResetDeliveryMessage[] = [];
+  async sendPasswordReset(message: PasswordResetDeliveryMessage) { this.messages.push(message); }
+}
 
 function splitSql(input: string): string[] {
   const statements: string[] = [];
@@ -68,7 +74,7 @@ function splitSql(input: string): string[] {
 }
 
 async function applyMigrations(db: PGlite) {
-  for (const file of ["db/migrations/0001_life_core_finance.sql", "db/migrations/0002_finance_import_state.sql", "db/migrations/0003_life_app_privileges.sql", "db/migrations/0004_family_space_ai.sql", "db/migrations/0005_finance_ledger_foundation.sql", "db/migrations/0006_finance_management_foundation.sql", "db/migrations/0007_finance_permissions.sql", "db/migrations/0008_finance_ai.sql", "db/migrations/0009_finance_production_hardening.sql", "db/migrations/0010_auth_sessions.sql"]) {
+  for (const file of ["db/migrations/0001_life_core_finance.sql", "db/migrations/0002_finance_import_state.sql", "db/migrations/0003_life_app_privileges.sql", "db/migrations/0004_family_space_ai.sql", "db/migrations/0005_finance_ledger_foundation.sql", "db/migrations/0006_finance_management_foundation.sql", "db/migrations/0007_finance_permissions.sql", "db/migrations/0008_finance_ai.sql", "db/migrations/0009_finance_production_hardening.sql", "db/migrations/0010_auth_sessions.sql", "db/migrations/0011_password_reset.sql"]) {
     let sql = await readFile(file, "utf8");
     sql = sql.replace("CREATE EXTENSION IF NOT EXISTS pgcrypto;", "-- pgcrypto is not bundled in PGlite").replaceAll("DEFAULT gen_random_uuid()", "");
     for (const statement of splitSql(sql)) await db.query(statement);
@@ -241,6 +247,72 @@ describe("PostgreSQL finance vertical slice", () => {
     expect(registration.json().household.role).toBe("owner");
     const duplicateRegistration = await authApp.inject({ method: "POST", url: "/api/auth/register", payload: { email: "new-family@example.invalid", password: "another-secret", household_name: "第二家庭" } });
     expect(duplicateRegistration.statusCode).toBe(409);
+  });
+
+  it("uses expiring single-use password reset tokens and revokes every active session", async () => {
+    const authStore = new SqlAuthStore(pool);
+    const delivery = new MemoryPasswordResetDelivery();
+    const authApp = buildServer({
+      authStore,
+      passwordResetDelivery: delivery,
+      financeFactory: (scope) => new SqlFinanceRepository(pool, scope, importStore),
+      familyFactory: (scope) => new SqlFamilyRepository(pool, scope),
+      importObjectStore: importStore,
+    });
+
+    const login = await authApp.inject({ method: "POST", url: "/api/auth/login", payload: { email: "a@example.invalid", password: "secret-password" } });
+    expect(login.statusCode).toBe(200);
+    const setCookieHeader = login.headers["set-cookie"];
+    const sessionCookie = String(Array.isArray(setCookieHeader) ? setCookieHeader[0] : setCookieHeader).split(";")[0];
+
+    const unknown = await authApp.inject({ method: "POST", url: "/api/auth/password-reset/request", payload: { email: "missing@example.invalid" } });
+    expect(unknown.statusCode).toBe(202);
+    expect(unknown.json().message).toBe("如果该邮箱已注册，重置链接将很快送达");
+    expect(delivery.messages).toHaveLength(0);
+
+    const firstRequest = await authApp.inject({ method: "POST", url: "/api/auth/password-reset/request", payload: { email: "a@example.invalid" } });
+    const secondRequest = await authApp.inject({ method: "POST", url: "/api/auth/password-reset/request", payload: { email: "a@example.invalid" } });
+    expect(firstRequest.statusCode).toBe(202);
+    expect(secondRequest.statusCode).toBe(202);
+    expect(secondRequest.json()).toEqual(unknown.json());
+    expect(delivery.messages).toHaveLength(2);
+    const firstToken = delivery.messages[0].token;
+    const activeToken = delivery.messages[1].token;
+    expect(firstToken).not.toBe(activeToken);
+
+    const stored = await db.query<{ token_hash: string }>("SELECT token_hash FROM password_reset_token ORDER BY created_at");
+    expect(stored.rows).toHaveLength(1);
+    expect(stored.rows.every((row) => row.token_hash.length === 64 && row.token_hash !== firstToken && row.token_hash !== activeToken)).toBe(true);
+
+    const superseded = await authApp.inject({ method: "POST", url: "/api/auth/password-reset/confirm", payload: { token: firstToken, password: "updated-password" } });
+    expect(superseded.statusCode).toBe(400);
+    expect(superseded.json().code).toBe("PASSWORD_RESET_INVALID");
+    const weak = await authApp.inject({ method: "POST", url: "/api/auth/password-reset/confirm", payload: { token: activeToken, password: "short" } });
+    expect(weak.statusCode).toBe(400);
+
+    const confirmed = await authApp.inject({ method: "POST", url: "/api/auth/password-reset/confirm", payload: { token: activeToken, password: "updated-password" } });
+    expect(confirmed.statusCode).toBe(200);
+    expect(confirmed.headers["set-cookie"]).toContain("Max-Age=0");
+    const afterReset = await authApp.inject({ method: "GET", url: "/api/me", headers: { cookie: sessionCookie } });
+    expect(afterReset.statusCode).toBe(401);
+    const reused = await authApp.inject({ method: "POST", url: "/api/auth/password-reset/confirm", payload: { token: activeToken, password: "another-password" } });
+    expect(reused.statusCode).toBe(400);
+
+    const oldPassword = await authApp.inject({ method: "POST", url: "/api/auth/login", payload: { email: "a@example.invalid", password: "secret-password" } });
+    expect(oldPassword.statusCode).toBe(401);
+    const newPassword = await authApp.inject({ method: "POST", url: "/api/auth/login", payload: { email: "a@example.invalid", password: "updated-password" } });
+    expect(newPassword.statusCode).toBe(200);
+
+    const expiryRequest = await authApp.inject({ method: "POST", url: "/api/auth/password-reset/request", payload: { email: "a@example.invalid" } });
+    expect(expiryRequest.statusCode).toBe(202);
+    const expiredToken = delivery.messages[2].token;
+    await db.query("UPDATE password_reset_token SET expires_at = now() - interval '1 minute' WHERE used_at IS NULL");
+    const expired = await authApp.inject({ method: "POST", url: "/api/auth/password-reset/confirm", payload: { token: expiredToken, password: "expired-password" } });
+    expect(expired.statusCode).toBe(400);
+    expect(expired.json().message).toContain("已过期");
+    const limitedRequest = await authApp.inject({ method: "POST", url: "/api/auth/password-reset/request", payload: { email: "a@example.invalid" } });
+    expect(limitedRequest.statusCode).toBe(429);
+    expect(Number(limitedRequest.headers["retry-after"])).toBeGreaterThan(0);
   });
 
   it("enqueues a permissioned CSV export, completes it asynchronously, expires it, and serves only the household file", async () => {

@@ -85,6 +85,62 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '429':
           $ref: '#/components/responses/TooManyRequests'
+  /api/auth/password-reset/request:
+    post:
+      tags: [Identity]
+      operationId: requestPasswordReset
+      summary: 请求单次使用的密码重置链接
+      description: 无论邮箱是否存在都返回相同的 202，避免泄露账号存在性。
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordResetRequest'
+      responses:
+        '202':
+          description: 请求已受理
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PasswordResetAccepted'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /api/auth/password-reset/confirm:
+    post:
+      tags: [Identity]
+      operationId: confirmPasswordReset
+      summary: 使用重置令牌更新密码并撤销该用户全部会话
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordResetConfirm'
+      responses:
+        '200':
+          description: 密码已更新，客户端必须重新登录
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+              description: 清除当前 life_session Cookie
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PasswordResetCompleted'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/Unavailable'
   /api/me:
     get:
       tags: [Identity]
@@ -1571,6 +1627,44 @@ components:
           type: string
           minLength: 1
           maxLength: 80
+    PasswordResetRequest:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 320
+    PasswordResetConfirm:
+      type: object
+      required: [token, password]
+      properties:
+        token:
+          type: string
+          minLength: 32
+          maxLength: 512
+        password:
+          type: string
+          minLength: 8
+          maxLength: 128
+    PasswordResetAccepted:
+      type: object
+      required: [ok, message]
+      properties:
+        ok:
+          type: boolean
+          const: true
+        message:
+          type: string
+    PasswordResetCompleted:
+      type: object
+      required: [ok, message]
+      properties:
+        ok:
+          type: boolean
+          const: true
+        message:
+          type: string
     MeResponse:
       type: object
       required: [user, household]
