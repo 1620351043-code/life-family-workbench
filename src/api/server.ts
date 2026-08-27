@@ -11,6 +11,7 @@ import { financeExportObjectKey, importObjectKey, LocalImportObjectStore, create
 import { LocalFinanceImportParser, type FinanceImportParser } from "./finance-import-parser.js";
 import { runFinanceExportJob } from "./finance-export-worker.js";
 import { SqlAuthStore, type AuthSession, type AuthStore } from "./auth.js";
+import { InMemoryAuthAttemptLimiter, type AuthAttemptLimiter, type AuthRateLimitInput } from "./auth-rate-limit.js";
 
 const sourceTypes = ["bank", "alipay", "wechat", "bookkeeping_app", "other"] as const;
 const overviewQuerySchema = z.object({ start: z.string().date(), end: z.string().date(), granularity: z.enum(["day", "week", "month", "quarter"]).default("day") });
@@ -42,12 +43,16 @@ const financeAiDecisionSchema = z.object({ decision: z.enum(["confirm", "reject"
 const financeAiConnectionSchema = z.object({ endpoint_url: z.string().url(), model: z.string().trim().min(1).max(120), api_key_ref: z.string().regex(/^[A-Za-z0-9._:-]{1,120}$/), status: z.enum(["active", "disabled"]).default("active") });
 const financeExportSchema = z.object({ start: z.string().date(), end: z.string().date(), format: z.literal("csv").default("csv") });
 const loginSchema = z.object({ email: z.string().email().max(320), password: z.string().min(1).max(1024) });
-const registerSchema = loginSchema.extend({ household_name: z.string().trim().min(1).max(80) });
+const registerSchema = z.object({
+  email: z.string().email().max(320),
+  password: z.string().min(8, "密码至少需要 8 位").max(128, "密码不能超过 128 位"),
+  household_name: z.string().trim().min(1, "请输入家庭名称").max(80),
+});
 
 export type FinanceRepositoryFactory = (scope: FinanceScope) => FinanceRepository;
 export type FamilyRepositoryFactory = (scope: FinanceScope) => FamilyRepository;
 export type ScopeResolver = (request: FastifyRequest) => FinanceScope | null | Promise<FinanceScope | null>;
-export type ServerOptions = { financeFactory?: FinanceRepositoryFactory; familyFactory?: FamilyRepositoryFactory; resolveScope?: ScopeResolver; authStore?: AuthStore; importObjectStore?: ImportObjectStore; importParser?: FinanceImportParser; exportRunner?: (scope: FinanceScope, jobId: string) => Promise<void> };
+export type ServerOptions = { financeFactory?: FinanceRepositoryFactory; familyFactory?: FamilyRepositoryFactory; resolveScope?: ScopeResolver; authStore?: AuthStore; authAttemptLimiter?: AuthAttemptLimiter; importObjectStore?: ImportObjectStore; importParser?: FinanceImportParser; exportRunner?: (scope: FinanceScope, jobId: string) => Promise<void> };
 
 const requestScopes = new WeakMap<object, FinanceScope | null>();
 const requestSessions = new WeakMap<object, AuthSession>();
@@ -114,6 +119,7 @@ function requireFamilyFactory(reply: { code(code: number): { send(body: unknown)
 
 export function buildServer(options: ServerOptions = {}): FastifyInstance {
   const authStore = options.authStore;
+  const authAttemptLimiter = options.authAttemptLimiter ?? new InMemoryAuthAttemptLimiter();
   const resolveScope = options.resolveScope ?? defaultScopeResolver;
   if (process.env.NODE_ENV === "production" && !authStore && !options.resolveScope) throw new Error("生产环境必须配置正式会话 resolver 或 authStore，禁止使用开发 scope");
   const importObjectStore: ImportObjectStore = options.importObjectStore ?? (process.env.NODE_ENV === "production" ? createProductionCosObjectStoreFromEnv() : new LocalImportObjectStore());
@@ -138,6 +144,7 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
 
   app.setErrorHandler((error, request, reply) => {
     if (error instanceof DomainError) return reply.code(error.statusCode).send({ code: error.code, message: error.message, trace_id: request.id });
+    if (error instanceof z.ZodError) return reply.code(400).send({ code: "BAD_REQUEST", message: error.issues[0]?.message ?? "提交内容不符合要求", trace_id: request.id });
     request.log.error(error);
     return reply.code(500).send({ code: "INTERNAL_ERROR", message: "服务暂时不可用", trace_id: request.id });
   });
@@ -146,19 +153,47 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
   app.get("/", async (_request, reply) => reply.type("text/html; charset=utf-8").send(await readFile(new URL("../../ui/low-fi/index.html", import.meta.url), "utf8")));
 
   app.post("/api/auth/login", async (request, reply) => {
-    if (!authStore) return reply.code(503).send({ code: "AUTH_NOT_CONFIGURED", message: "身份服务尚未配置" });
+    if (!authStore) return reply.code(503).send({ code: "AUTH_NOT_CONFIGURED", message: "身份服务尚未配置", trace_id: request.id });
     const input = loginSchema.parse(request.body);
+    const limitInput: AuthRateLimitInput = { operation: "login", email: input.email, ipAddress: request.ip };
+    const currentLimit = authAttemptLimiter.check(limitInput);
+    if (!currentLimit.allowed) {
+      reply.header("retry-after", String(currentLimit.retryAfterSeconds));
+      return reply.code(429).send({ code: "AUTH_RATE_LIMITED", message: "尝试次数过多，请稍后再试", retry_after_seconds: currentLimit.retryAfterSeconds, trace_id: request.id });
+    }
     const result = await authStore.authenticate(input.email, input.password, { userAgent: headerValue(request, "user-agent"), ipAddress: request.ip });
-    if (!result) return reply.code(401).send({ code: "INVALID_CREDENTIALS", message: "邮箱或密码不正确" });
+    if (!result) {
+      const nextLimit = authAttemptLimiter.recordFailure(limitInput);
+      if (!nextLimit.allowed) {
+        reply.header("retry-after", String(nextLimit.retryAfterSeconds));
+        return reply.code(429).send({ code: "AUTH_RATE_LIMITED", message: "尝试次数过多，请稍后再试", retry_after_seconds: nextLimit.retryAfterSeconds, trace_id: request.id });
+      }
+      return reply.code(401).send({ code: "INVALID_CREDENTIALS", message: "邮箱或密码不正确", trace_id: request.id });
+    }
+    authAttemptLimiter.recordSuccess(limitInput);
     setSessionCookie(reply, result.token);
     return result.session.identity;
   });
 
   app.post("/api/auth/register", async (request, reply) => {
-    if (!authStore) return reply.code(503).send({ code: "AUTH_NOT_CONFIGURED", message: "身份服务尚未配置" });
+    if (!authStore) return reply.code(503).send({ code: "AUTH_NOT_CONFIGURED", message: "身份服务尚未配置", trace_id: request.id });
     const input = registerSchema.parse(request.body);
+    const limitInput: AuthRateLimitInput = { operation: "register", email: input.email, ipAddress: request.ip };
+    const currentLimit = authAttemptLimiter.check(limitInput);
+    if (!currentLimit.allowed) {
+      reply.header("retry-after", String(currentLimit.retryAfterSeconds));
+      return reply.code(429).send({ code: "AUTH_RATE_LIMITED", message: "注册尝试过于频繁，请稍后再试", retry_after_seconds: currentLimit.retryAfterSeconds, trace_id: request.id });
+    }
     const result = await authStore.register(input.email, input.password, input.household_name, { userAgent: headerValue(request, "user-agent"), ipAddress: request.ip });
-    if (!result) return reply.code(409).send({ code: "EMAIL_ALREADY_REGISTERED", message: "该邮箱已注册，不能加入第二个家庭" });
+    if (!result) {
+      const nextLimit = authAttemptLimiter.recordFailure(limitInput);
+      if (!nextLimit.allowed) {
+        reply.header("retry-after", String(nextLimit.retryAfterSeconds));
+        return reply.code(429).send({ code: "AUTH_RATE_LIMITED", message: "注册尝试过于频繁，请稍后再试", retry_after_seconds: nextLimit.retryAfterSeconds, trace_id: request.id });
+      }
+      return reply.code(409).send({ code: "EMAIL_ALREADY_REGISTERED", message: "该邮箱已注册，不能创建第二个家庭", trace_id: request.id });
+    }
+    authAttemptLimiter.recordSuccess(limitInput);
     setSessionCookie(reply, result.token);
     return reply.code(201).send(result.session.identity);
   });

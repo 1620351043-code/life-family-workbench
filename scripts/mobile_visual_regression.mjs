@@ -5,6 +5,8 @@ const require = createRequire(import.meta.url);
 const { chromium } = require("/Users/wrt/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright-core");
 const baseUrl = process.env.MOBILE_BASE_URL ?? "http://127.0.0.1:4173";
 const cdpUrl = process.env.CDP_URL ?? "http://127.0.0.1:9223";
+const authEmail = process.env.MOBILE_E2E_EMAIL ?? "mobile-e2e@example.invalid";
+const authPassword = process.env.MOBILE_E2E_PASSWORD ?? "mobile-e2e-password";
 const outputDir = "output/playwright/finance-golden";
 const viewports = [
   { name: "430x932", width: 430, height: 932 },
@@ -32,6 +34,12 @@ try {
   for (const viewport of viewports) {
     await page.setViewportSize({ width: viewport.width, height: viewport.height });
     await page.goto(`${baseUrl}/?route=finance`, { waitUntil: "networkidle" });
+    if (await page.locator(".auth-card").isVisible().catch(() => false)) {
+      await page.locator('input[name="email"]').fill(authEmail);
+      await page.locator('input[name="password"]').fill(authPassword);
+      await page.getByRole("button", { name: "进入我的家庭" }).click();
+      await page.getByRole("navigation", { name: "主导航" }).waitFor();
+    }
     await page.getByRole("button", { name: "财务" }).click().catch(() => undefined);
     await page.waitForTimeout(250);
     const audit = await page.evaluate(() => {
@@ -43,7 +51,14 @@ try {
         })
         .map((node) => {
           const rect = node.getBoundingClientRect();
-          return { tag: node.tagName, width: rect.width, height: rect.height, text: node.textContent?.trim().slice(0, 24) };
+          return {
+            tag: node.tagName,
+            width: rect.width,
+            height: rect.height,
+            text: node.textContent?.trim().slice(0, 24),
+            className: node.className,
+            ariaLabel: node.getAttribute("aria-label"),
+          };
         });
       return {
         rootWidth: root.clientWidth,

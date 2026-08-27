@@ -10,6 +10,7 @@ import { financeExportObjectKey, importObjectKey, MemoryImportObjectStore } from
 import { runQueuedFinanceExportWorker } from "./finance-export-worker.js";
 import { runFinanceRetentionForHousehold } from "./finance-retention-worker.js";
 import { SqlAuthStore, hashPassword } from "./auth.js";
+import { InMemoryAuthAttemptLimiter } from "./auth-rate-limit.js";
 import type { ParsedImportResult } from "./finance-import-parser.js";
 
 const householdA = "00000000-0000-0000-0000-0000000000a1";
@@ -193,6 +194,7 @@ describe("PostgreSQL finance vertical slice", () => {
     const authStore = new SqlAuthStore(pool);
     const authApp = buildServer({
       authStore,
+      authAttemptLimiter: new InMemoryAuthAttemptLimiter({ login: { maxFailures: 2, blockMs: 60_000 }, register: { maxFailures: 2, blockMs: 60_000 } }),
       financeFactory: (scope) => new SqlFinanceRepository(pool, scope, importStore),
       familyFactory: (scope) => new SqlFamilyRepository(pool, scope),
       importObjectStore: importStore,
@@ -219,6 +221,18 @@ describe("PostgreSQL finance vertical slice", () => {
     expect(logout.statusCode).toBe(200);
     const afterLogout = await authApp.inject({ method: "GET", url: "/api/me", headers: { cookie: sessionCookie } });
     expect(afterLogout.statusCode).toBe(401);
+
+    const wrongLogin = await authApp.inject({ method: "POST", url: "/api/auth/login", payload: { email: "a@example.invalid", password: "wrong-password" } });
+    expect(wrongLogin.statusCode).toBe(401);
+    expect(wrongLogin.json().code).toBe("INVALID_CREDENTIALS");
+    const limitedLogin = await authApp.inject({ method: "POST", url: "/api/auth/login", payload: { email: "a@example.invalid", password: "wrong-password" } });
+    expect(limitedLogin.statusCode).toBe(429);
+    expect(limitedLogin.headers["retry-after"]).toBe("60");
+    expect(limitedLogin.json().code).toBe("AUTH_RATE_LIMITED");
+
+    const weakRegistration = await authApp.inject({ method: "POST", url: "/api/auth/register", payload: { email: "weak@example.invalid", password: "short", household_name: "弱密码家庭" } });
+    expect(weakRegistration.statusCode).toBe(400);
+    expect(weakRegistration.json().code).toBe("BAD_REQUEST");
 
     const registration = await authApp.inject({ method: "POST", url: "/api/auth/register", payload: { email: "new-family@example.invalid", password: "another-secret", household_name: "新家庭" } });
     expect(registration.statusCode).toBe(201);

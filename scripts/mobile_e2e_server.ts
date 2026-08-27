@@ -4,6 +4,7 @@ import { buildServer } from "../src/api/server.js";
 import { SqlFinanceRepository } from "../src/api/finance-repository.js";
 import { SqlFamilyRepository } from "../src/api/family-repository.js";
 import { MemoryImportObjectStore } from "../src/api/import-storage.js";
+import { SqlAuthStore, hashPassword } from "../src/api/auth.js";
 import type { DbPool } from "../src/api/database.js";
 
 const householdId = "00000000-0000-0000-0000-0000000000a1";
@@ -12,7 +13,9 @@ const memberId = "20000000-0000-0000-0000-0000000000a1";
 const categoryId = "40000000-0000-0000-0000-0000000000a1";
 const budgetId = "50000000-0000-0000-0000-0000000000a1";
 const budgetPeriodId = "60000000-0000-0000-0000-0000000000a1";
-const scope = { householdId, userId };
+const apiPort = Number(process.env.MOBILE_API_PORT ?? 3100);
+export const MOBILE_E2E_EMAIL = "mobile-e2e@example.invalid";
+export const MOBILE_E2E_PASSWORD = "mobile-e2e-password";
 
 function splitSql(input: string) {
   const statements: string[] = [];
@@ -54,7 +57,7 @@ async function migrate(db: PGlite) {
 const db = new PGlite();
 await migrate(db);
 await db.query("INSERT INTO household (id, name) VALUES ($1, $2)", [householdId, "移动端验收家庭"]);
-await db.query("INSERT INTO app_user (id, email, password_hash) VALUES ($1, $2, $3)", [userId, "mobile-e2e@example.invalid", "test"]);
+await db.query("INSERT INTO app_user (id, email, password_hash) VALUES ($1, $2, $3)", [userId, MOBILE_E2E_EMAIL, await hashPassword(MOBILE_E2E_PASSWORD)]);
 await db.query("INSERT INTO household_member (id, household_id, user_id, role) VALUES ($1, $2, $3, 'owner')", [memberId, householdId, userId]);
 await db.query("INSERT INTO financial_source (id, household_id, source_type, display_name) VALUES ($1, $2, 'bank', 'bank')", ["30000000-0000-0000-0000-0000000000a1", householdId]);
 await db.query("INSERT INTO category (id, household_id, name, direction_scope, color_token) VALUES ($1, $2, '餐饮', 'expense', 'orange')", [categoryId, householdId]);
@@ -66,9 +69,10 @@ await db.query("INSERT INTO asset_event (id, household_id, asset_id, occurred_at
 
 const pool: DbPool = { connect: async () => { await db.query("SET ROLE life_app"); return { query: db.query.bind(db), release: () => undefined }; } };
 const importStore = new MemoryImportObjectStore();
-const app = buildServer({ resolveScope: () => scope, financeFactory: () => new SqlFinanceRepository(pool, scope, importStore), familyFactory: () => new SqlFamilyRepository(pool, scope), importObjectStore: importStore });
-await app.listen({ host: "127.0.0.1", port: 3100 });
-console.log("mobile-e2e-api listening on 3100");
+const authStore = new SqlAuthStore(pool);
+const app = buildServer({ authStore, financeFactory: (requestScope) => new SqlFinanceRepository(pool, requestScope, importStore), familyFactory: (requestScope) => new SqlFamilyRepository(pool, requestScope), importObjectStore: importStore });
+await app.listen({ host: "127.0.0.1", port: apiPort });
+console.log(`mobile-e2e-api listening on ${apiPort}`);
 
 const close = async () => { await app.close(); await db.close(); process.exit(0); };
 process.once("SIGINT", () => void close());

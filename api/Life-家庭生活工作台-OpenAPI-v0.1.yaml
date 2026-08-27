@@ -41,6 +41,8 @@ paths:
                 $ref: '#/components/schemas/MeResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
   /api/auth/logout:
     post:
       tags: [Identity]
@@ -79,6 +81,10 @@ paths:
                 $ref: '#/components/schemas/MeResponse'
         '409':
           $ref: '#/components/responses/Conflict'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
   /api/me:
     get:
       tags: [Identity]
@@ -1527,6 +1533,17 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
+    TooManyRequests:
+      description: 认证尝试过于频繁；客户端应遵循 Retry-After
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+            minimum: 1
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
   schemas:
     LoginRequest:
       type: object
@@ -1548,8 +1565,8 @@ components:
           format: email
         password:
           type: string
-          minLength: 1
-          maxLength: 1024
+          minLength: 8
+          maxLength: 128
         household_name:
           type: string
           minLength: 1
@@ -2829,3 +2846,6 @@ components:
           type: string
         trace_id:
           type: string
+        retry_after_seconds:
+          type: integer
+          minimum: 1

@@ -5,6 +5,7 @@
 ## 唯一事实源
 
 - 生产发布差距、推进顺序、逐项状态和验收证据：`outputs/Life-生产发布差距审计与推进总清单-v0.1.md`
+- 移动端登录与注册创建家庭垂直切片：`outputs/Life-B004-B005移动端身份入口垂直切片卡-v0.1.md`
 - 产品范围、页面树和小兔子 AI 交互：`outputs/Life-家庭生活工作台-PRD与UI页面覆盖规划-v0.1.md`
 - 页面垂直切片实施和验收标准：`outputs/Life-页面垂直切片实施与验收流程-v0.1.md`
 - 总体 UI 设计系统：`outputs/Life-移动端总体UI设计系统-v0.1.md`
@@ -29,8 +30,11 @@ npm run migration:smoke
 npm run release:check -- --tag=v0.1.0 --env=production
 npm run web:typecheck
 npm run web:build
+npm run web:auth-e2e
 npm run web:visual-regression
 ```
+
+`web:auth-e2e` 和 `web:visual-regression` 需要先启动 `scripts/mobile_e2e_server.ts` 与 Vite 开发服务；测试会使用真实 `SqlAuthStore`、PGlite 和 HttpOnly Cookie，不使用请求头伪造身份。
 
 生产定时任务：`npm run finance:export-worker`、`npm run finance:retention-worker`。两者都要求 `DATABASE_URL` 和腾讯云 COS 环境变量；缺少生产对象存储配置时必须失败启动，不回退到本地文件。
 
