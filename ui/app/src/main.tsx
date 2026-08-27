@@ -5,11 +5,13 @@ import { FinancePage } from "./components/FinancePage";
 import { FoodPage } from "./components/FoodPage";
 import { BunnyMark } from "./components/BunnyMark";
 import { AuthLoading, AuthPage } from "./components/AuthPage";
+import { FamilyMembersPage } from "./components/FamilyMembersPage";
 import "./styles.css";
 import "./design-system.css";
 import "./auth.css";
 import "./finance.css";
 import "./food.css";
+import "./family-members.css";
 
 type Route = "space" | "food" | "finance" | "more";
 
@@ -22,6 +24,7 @@ const navItems: Array<{ id: Route; label: string; icon: string }> = [
 
 function App() {
   const [resetToken, setResetToken] = useState<string | null>(() => new URLSearchParams(window.location.search).get("reset_token"));
+  const [inviteToken, setInviteToken] = useState<string | null>(() => new URLSearchParams(window.location.search).get("invite_token"));
   const [identity, setIdentity] = useState<AuthIdentity | null>(null);
   const [sessionStatus, setSessionStatus] = useState<"checking" | "anonymous" | "authenticated">("checking");
   const [sessionMessage, setSessionMessage] = useState<string | null>(null);
@@ -36,6 +39,7 @@ function App() {
   const [commentSending, setCommentSending] = useState(false);
   const topicRequestVersion = useRef(0);
   const skipNextSessionCheck = useRef(false);
+  const initialSessionCheckStarted = useRef(false);
 
   const checkSession = async () => {
     setSessionStatus("checking");
@@ -66,20 +70,23 @@ function App() {
   };
 
   useEffect(() => {
-    if (resetToken) {
+    if (resetToken || inviteToken) {
       window.history.replaceState({}, "", window.location.pathname);
       setIdentity(null);
       setSessionStatus("anonymous");
       return;
     }
+    if (identity) return;
     if (skipNextSessionCheck.current) {
       skipNextSessionCheck.current = false;
       setIdentity(null);
       setSessionStatus("anonymous");
       return;
     }
+    if (initialSessionCheckStarted.current) return;
+    initialSessionCheckStarted.current = true;
     void checkSession();
-  }, [resetToken]);
+  }, [resetToken, inviteToken]);
   useEffect(() => {
     if (!identity) {
       setTopics([]);
@@ -157,7 +164,7 @@ function App() {
 
   if (sessionStatus === "checking") return <AuthLoading />;
   if (sessionStatus === "anonymous" || !identity) {
-    return <AuthPage serviceMessage={sessionMessage} resetToken={resetToken} onLogin={authApi.login} onRegister={authApi.register} onRequestPasswordReset={authApi.requestPasswordReset} onConfirmPasswordReset={authApi.confirmPasswordReset} onPasswordResetCompleted={() => { skipNextSessionCheck.current = true; window.history.replaceState({}, "", window.location.pathname); setIdentity(null); setSessionStatus("anonymous"); setResetToken(null); }} onAuthenticated={(current) => { setIdentity(current); setSessionMessage(null); setSessionStatus("authenticated"); }} onRetrySession={checkSession} />;
+    return <AuthPage serviceMessage={sessionMessage} resetToken={resetToken} inviteToken={resetToken ? null : inviteToken} onLogin={authApi.login} onRegister={authApi.register} onRequestPasswordReset={authApi.requestPasswordReset} onConfirmPasswordReset={authApi.confirmPasswordReset} onPreviewInvitation={authApi.previewInvitation} onAcceptInvitation={authApi.acceptInvitation} onPasswordResetCompleted={() => { skipNextSessionCheck.current = true; window.history.replaceState({}, "", window.location.pathname); setIdentity(null); setSessionStatus("anonymous"); setResetToken(null); }} onAuthenticated={(current) => { setIdentity(current); setInviteToken(null); setSessionMessage(null); setSessionStatus("authenticated"); }} onRetrySession={checkSession} />;
   }
 
   return (
@@ -223,8 +230,10 @@ function AiSheet(props: { summary: TopicAiSummary; onClose: () => void; onDecisi
 }
 
 function MorePage(props: { identity: AuthIdentity; onLogout: () => Promise<void> }) {
+  const [section, setSection] = useState<"home" | "members">("home");
+  if (section === "members") return <FamilyMembersPage identity={props.identity} onBack={() => setSection("home")} />;
   const roleLabel = props.identity.household.role === "owner" ? "家庭所有者" : props.identity.household.role === "adult" ? "成人成员" : props.identity.household.role === "child" ? "儿童成员" : "访客成员";
-  return <section className="more-page"><div className="section-heading"><div><span className="eyebrow">账号与家庭</span><h1>更多</h1></div></div><article className="identity-card"><div className="identity-avatar">{props.identity.user.email.slice(0, 1).toUpperCase()}</div><div><strong>{props.identity.household.name}</strong><p>{props.identity.user.email}</p><span>{roleLabel}</span></div></article><div className="security-summary"><div><span aria-hidden="true">⌂</span><p><strong>唯一家庭归属</strong><small>当前账号不能切换或加入第二个家庭</small></p></div><div><span aria-hidden="true">◉</span><p><strong>家庭数据隔离</strong><small>账本、讨论、AI 连接和记忆独立保存</small></p></div></div><button type="button" className="logout-button" onClick={() => void props.onLogout()}>退出登录</button></section>;
+  return <section className="more-page"><div className="section-heading"><div><span className="eyebrow">账号与家庭</span><h1>更多</h1></div></div><article className="identity-card"><div className="identity-avatar">{props.identity.user.email.slice(0, 1).toUpperCase()}</div><div><strong>{props.identity.household.name}</strong><p>{props.identity.user.email}</p><span>{roleLabel}</span></div></article><div className="security-summary"><button type="button" onClick={() => setSection("members")}><span aria-hidden="true">⌂</span><p><strong>家庭与成员</strong><small>查看成员、创建一次性邀请和管理角色</small></p><b aria-hidden="true">›</b></button><div><span aria-hidden="true">◉</span><p><strong>家庭数据隔离</strong><small>账本、讨论、AI 连接和记忆独立保存</small></p></div><div><span aria-hidden="true">◇</span><p><strong>唯一家庭归属</strong><small>当前账号不能切换或加入第二个家庭</small></p></div></div><button type="button" className="logout-button" onClick={() => void props.onLogout()}>退出登录</button></section>;
 }
 
 function formatTime(value: string) { const date = new Date(value); return Number.isNaN(date.valueOf()) ? value : date.toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" }); }

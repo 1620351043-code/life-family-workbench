@@ -141,6 +141,59 @@ paths:
           $ref: '#/components/responses/TooManyRequests'
         '503':
           $ref: '#/components/responses/Unavailable'
+  /api/auth/invitations/preview:
+    get:
+      tags: [Identity]
+      operationId: previewHouseholdInvitation
+      summary: 查看一次性邀请码对应的家庭和角色说明
+      security: []
+      parameters:
+        - name: token
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 16
+            maxLength: 512
+      responses:
+        '200':
+          description: 邀请状态和可展示的家庭摘要
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HouseholdInvitationPreview'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+  /api/auth/invitations/accept:
+    post:
+      tags: [Identity]
+      operationId: acceptHouseholdInvitation
+      summary: 使用一次性邀请码创建账号并加入唯一家庭
+      description: 已注册账号、过期、撤销或已使用的邀请码均拒绝；成功后写入 HttpOnly 会话。
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AcceptHouseholdInvitationRequest'
+      responses:
+        '201':
+          description: 已加入家庭
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MeResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '410':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
   /api/me:
     get:
       tags: [Identity]
@@ -961,6 +1014,115 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+  /api/family/members:
+    get:
+      tags: [Family Space]
+      operationId: listHouseholdMembers
+      summary: 获取当前唯一家庭的有效成员
+      responses:
+        '200':
+          description: 按所有者、成人、儿童、访客排序的成员列表
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [members]
+                properties:
+                  members:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/FamilyMember'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /api/family/members/{userId}/role:
+    patch:
+      tags: [Family Space]
+      operationId: updateHouseholdMemberRole
+      summary: 由家庭所有者修改非所有者成员角色
+      description: 角色变化会清空该成员已有的显式财务授权，必须重新按需授权。
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateFamilyMemberRoleRequest'
+      responses:
+        '200':
+          description: 角色已更新并写入审计
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FamilyMember'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/family/invitations:
+    get:
+      tags: [Family Space]
+      operationId: listHouseholdInvitations
+      summary: 由家庭所有者查看最近的邀请码状态
+      responses:
+        '200':
+          description: 邀请列表，不返回原始邀请码
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [invitations]
+                properties:
+                  invitations:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/FamilyInvitation'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      tags: [Family Space]
+      operationId: createHouseholdInvitation
+      summary: 由家庭所有者创建一次性邀请码
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateFamilyInvitationRequest'
+      responses:
+        '201':
+          description: 邀请已创建，invite_code 仅在本次响应返回
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreatedFamilyInvitation'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/family/invitations/{invitationId}:
+    delete:
+      tags: [Family Space]
+      operationId: revokeHouseholdInvitation
+      summary: 由家庭所有者撤销尚未使用的邀请码
+      parameters:
+        - $ref: '#/components/parameters/InvitationId'
+      responses:
+        '200':
+          description: 邀请已撤销
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [invitation_id]
+                properties:
+                  invitation_id:
+                    type: string
+                    format: uuid
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
   /api/family/topics:
     get:
       tags: [Family Space]
@@ -1475,6 +1637,13 @@ components:
       schema:
         type: string
         format: uuid
+    InvitationId:
+      name: invitationId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
     PeriodStart:
       name: start
       in: query
@@ -1665,6 +1834,115 @@ components:
           const: true
         message:
           type: string
+    AcceptHouseholdInvitationRequest:
+      type: object
+      required: [token, email, password]
+      properties:
+        token:
+          type: string
+          minLength: 16
+          maxLength: 512
+        email:
+          type: string
+          format: email
+          maxLength: 320
+        password:
+          type: string
+          minLength: 8
+          maxLength: 128
+    HouseholdInvitationPreview:
+      type: object
+      required: [status, invitationId, householdId, householdName, inviterEmail, role, expiresAt]
+      properties:
+        status:
+          type: string
+          enum: [active, expired, revoked, used]
+        invitationId:
+          type: string
+          format: uuid
+        householdId:
+          type: string
+          format: uuid
+        householdName:
+          type: string
+        inviterEmail:
+          type: string
+          format: email
+        role:
+          type: string
+          enum: [adult, child, guest]
+        expiresAt:
+          type: string
+          format: date-time
+    FamilyMember:
+      type: object
+      required: [user_id, email, role, status, joined_at]
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        role:
+          type: string
+          enum: [owner, adult, child, guest]
+        status:
+          type: string
+          enum: [active]
+        joined_at:
+          type: string
+          format: date-time
+    UpdateFamilyMemberRoleRequest:
+      type: object
+      required: [role]
+      properties:
+        role:
+          type: string
+          enum: [adult, child, guest]
+    CreateFamilyInvitationRequest:
+      type: object
+      required: [role, expires_in_days]
+      properties:
+        role:
+          type: string
+          enum: [adult, child, guest]
+        expires_in_days:
+          type: integer
+          minimum: 1
+          maximum: 30
+    FamilyInvitation:
+      type: object
+      required: [id, role, status, expires_at, created_at, accepted_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        role:
+          type: string
+          enum: [adult, child, guest]
+        status:
+          type: string
+          enum: [active, expired, revoked, used]
+        expires_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        accepted_at:
+          type: string
+          format: date-time
+          nullable: true
+    CreatedFamilyInvitation:
+      allOf:
+        - $ref: '#/components/schemas/FamilyInvitation'
+        - type: object
+          required: [invite_code]
+          properties:
+            invite_code:
+              type: string
+              description: 仅本次响应返回，服务端只持久化 SHA-256 摘要
     MeResponse:
       type: object
       required: [user, household]

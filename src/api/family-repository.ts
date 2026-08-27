@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { DomainError } from "./domain-error.js";
 import { inTenantTransaction, type DbClient, type DbPool, type FinanceScope } from "./database.js";
 import { DeterministicTopicAiProvider, type TopicAiProvider } from "./ai-gateway.js";
@@ -37,6 +37,17 @@ export type TopicAiSummaryResponse = {
   action_proposal: AiActionProposal;
 };
 export type ActionDecisionResponse = { proposal: AiActionProposal; execution: { comment_id: string } | null };
+export type FamilyMemberRole = "owner" | "adult" | "child" | "guest";
+export type FamilyMember = { user_id: string; email: string; role: FamilyMemberRole; status: "active"; joined_at: string };
+export type FamilyInvitation = {
+  id: string;
+  role: Exclude<FamilyMemberRole, "owner">;
+  status: "active" | "expired" | "revoked" | "used";
+  expires_at: string;
+  created_at: string;
+  accepted_at: string | null;
+};
+export type CreatedFamilyInvitation = FamilyInvitation & { invite_code: string };
 
 export type CreateTopicInput = { topicType: FamilyTopicType; title: string; body: string };
 
@@ -47,6 +58,11 @@ export interface FamilyRepository {
   createComment(topicId: string, body: string): Promise<FamilyTopicComment>;
   summarizeTopic(topicId: string): Promise<TopicAiSummaryResponse>;
   decideAction(proposalId: string, decision: "confirm" | "reject", expectedVersion: number): Promise<ActionDecisionResponse>;
+  listMembers(): Promise<FamilyMember[]>;
+  listInvitations(): Promise<FamilyInvitation[]>;
+  createInvitation(role: Exclude<FamilyMemberRole, "owner">, expiresInDays: number): Promise<CreatedFamilyInvitation>;
+  revokeInvitation(invitationId: string): Promise<{ invitation_id: string }>;
+  updateMemberRole(userId: string, role: Exclude<FamilyMemberRole, "owner">): Promise<FamilyMember>;
 }
 
 type TopicRow = {
@@ -224,6 +240,78 @@ export class SqlFamilyRepository implements FamilyRepository {
     });
   }
 
+  async listMembers(): Promise<FamilyMember[]> {
+    return inTenantTransaction(this.pool, this.scope, async (client) => this.listMembersWithClient(client));
+  }
+
+  async listInvitations(): Promise<FamilyInvitation[]> {
+    return inTenantTransaction(this.pool, this.scope, async (client) => {
+      await this.assertOwner(client);
+      const result = await client.query<Record<string, unknown>>(
+        `SELECT id::text AS id, role,
+                CASE WHEN accepted_at IS NOT NULL THEN 'used'
+                     WHEN revoked_at IS NOT NULL THEN 'revoked'
+                     WHEN expires_at <= now() THEN 'expired' ELSE 'active' END AS status,
+                expires_at::text AS expires_at, created_at::text AS created_at,
+                accepted_at::text AS accepted_at
+           FROM household_invitation
+          WHERE household_id = $1
+          ORDER BY created_at DESC
+          LIMIT 30`,
+        [this.scope.householdId],
+      );
+      return result.rows.map((row) => this.mapInvitation(row));
+    });
+  }
+
+  async createInvitation(role: Exclude<FamilyMemberRole, "owner">, expiresInDays: number): Promise<CreatedFamilyInvitation> {
+    return inTenantTransaction(this.pool, this.scope, async (client) => {
+      await this.assertOwner(client);
+      const inviteCode = randomBytes(24).toString("base64url");
+      const id = randomUUID();
+      const expiresAt = new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000).toISOString();
+      const created = await client.query<{ created: boolean }>(
+        "SELECT life_family_create_invitation($1, $2, $3, $4, $5, $6::timestamptz) AS created",
+        [id, this.scope.householdId, this.scope.userId, createHash("sha256").update(inviteCode).digest("hex"), role, expiresAt],
+      );
+      if (created.rows[0]?.created !== true) throw new DomainError("INVITATION_INVALID", "邀请码参数不符合要求", 400);
+      await this.writeAudit(client, "household_invitation.create", "household_invitation", id, { role, expires_at: expiresAt });
+      return { id, role, status: "active", expires_at: expiresAt, created_at: new Date().toISOString(), accepted_at: null, invite_code: inviteCode };
+    });
+  }
+
+  async revokeInvitation(invitationId: string): Promise<{ invitation_id: string }> {
+    return inTenantTransaction(this.pool, this.scope, async (client) => {
+      await this.assertOwner(client);
+      const result = await client.query<{ revoked: boolean }>(
+        "SELECT life_family_revoke_invitation($1, $2, $3) AS revoked",
+        [this.scope.householdId, this.scope.userId, invitationId],
+      );
+      if (result.rows[0]?.revoked !== true) throw new DomainError("INVITATION_NOT_ACTIVE", "邀请码不存在或已经失效", 409);
+      await this.writeAudit(client, "household_invitation.revoke", "household_invitation", invitationId);
+      return { invitation_id: invitationId };
+    });
+  }
+
+  async updateMemberRole(userId: string, role: Exclude<FamilyMemberRole, "owner">): Promise<FamilyMember> {
+    return inTenantTransaction(this.pool, this.scope, async (client) => {
+      await this.assertOwner(client);
+      const members = await this.listMembersWithClient(client);
+      const before = members.find((member) => member.user_id === userId);
+      if (!before) throw new DomainError("MEMBER_NOT_FOUND", "家庭成员不存在", 404);
+      if (before.role === "owner") throw new DomainError("OWNER_ROLE_LOCKED", "家庭所有者角色不能修改", 409);
+      const result = await client.query<{ updated: boolean }>(
+        "SELECT life_family_update_member_role($1, $2, $3, $4) AS updated",
+        [this.scope.householdId, this.scope.userId, userId, role],
+      );
+      if (result.rows[0]?.updated !== true) throw new DomainError("MEMBER_ROLE_UPDATE_FAILED", "成员角色更新失败", 409);
+      await this.writeAudit(client, "household_member.role_update", "household_member", userId, { before_role: before.role, role, finance_permission_reset: true });
+      const after = (await this.listMembersWithClient(client)).find((member) => member.user_id === userId);
+      if (!after) throw new DomainError("MEMBER_NOT_FOUND", "家庭成员不存在", 404);
+      return after;
+    });
+  }
+
   private async getTopicWithClient(client: DbClient, topicId: string): Promise<FamilyTopicDetail | null> {
     const topicResult = await client.query<TopicRow>(`${topicSelect}`, [this.scope.householdId, topicId]);
     const row = topicResult.rows[0];
@@ -246,6 +334,39 @@ export class SqlFamilyRepository implements FamilyRepository {
     );
     const row = required(result.rows, "PROPOSAL_VERSION_CONFLICT", "AI 行动提案版本已变化");
     return { id: row.id, action_type: row.action_type, status: row.status, version: Number(row.version), payload: asPayload(row.payload) };
+  }
+
+  private async listMembersWithClient(client: DbClient): Promise<FamilyMember[]> {
+    const result = await client.query<Record<string, unknown>>(
+      "SELECT * FROM life_family_list_members($1, $2)",
+      [this.scope.householdId, this.scope.userId],
+    );
+    return result.rows.map((row) => ({
+      user_id: String(row.user_id),
+      email: String(row.email),
+      role: String(row.role) as FamilyMemberRole,
+      status: "active" as const,
+      joined_at: String(row.joined_at),
+    }));
+  }
+
+  private mapInvitation(row: Record<string, unknown>): FamilyInvitation {
+    return {
+      id: String(row.id),
+      role: String(row.role) as FamilyInvitation["role"],
+      status: String(row.status) as FamilyInvitation["status"],
+      expires_at: String(row.expires_at),
+      created_at: String(row.created_at),
+      accepted_at: row.accepted_at ? String(row.accepted_at) : null,
+    };
+  }
+
+  private async assertOwner(client: DbClient) {
+    const result = await client.query<{ role: string }>(
+      "SELECT role FROM household_member WHERE household_id = $1 AND user_id = $2 AND status = 'active'",
+      [this.scope.householdId, this.scope.userId],
+    );
+    if (result.rows[0]?.role !== "owner") throw new DomainError("HOUSEHOLD_OWNER_REQUIRED", "只有家庭所有者可以执行此操作", 403);
   }
 
   private async writeAudit(client: DbClient, action: string, resourceType: string, resourceId: string, afterSummary: Record<string, unknown> = {}) {

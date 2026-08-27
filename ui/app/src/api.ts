@@ -16,6 +16,11 @@ export type TopicAiSummary = {
   action_proposal: { id: string; action_type: "publish_summary_comment"; status: "proposed" | "confirmed" | "rejected"; version: number; payload: Record<string, unknown> };
 };
 export type AuthIdentity = { user: { id: string; email: string }; household: { id: string; name: string; role: "owner" | "adult" | "child" | "guest" } };
+export type FamilyMemberRole = "owner" | "adult" | "child" | "guest";
+export type FamilyMember = { user_id: string; email: string; role: FamilyMemberRole; status: "active"; joined_at: string };
+export type FamilyInvitation = { id: string; role: Exclude<FamilyMemberRole, "owner">; status: "active" | "expired" | "revoked" | "used"; expires_at: string; created_at: string; accepted_at: string | null };
+export type CreatedFamilyInvitation = FamilyInvitation & { invite_code: string };
+export type HouseholdInvitationPreview = { status: "active" | "expired" | "revoked" | "used"; invitationId: string; householdId: string; householdName: string; inviterEmail: string; role: Exclude<FamilyMemberRole, "owner">; expiresAt: string };
 
 export type FinanceDrilldownRef = { type: string; filter_id: string; filters: Record<string, string> };
 export type FinanceGranularity = "day" | "week" | "month" | "quarter";
@@ -208,6 +213,11 @@ export const familyApi = {
   createComment: (topicId: string, body: string) => request<TopicComment>(`/api/family/topics/${topicId}/comments`, { method: "POST", body: JSON.stringify({ body }) }),
   summarizeTopic: (topicId: string) => request<TopicAiSummary>(`/api/family/topics/${topicId}/ai-summary`, { method: "POST" }),
   decideAiAction: (proposalId: string, decision: "confirm" | "reject", expectedVersion: number) => request<{ proposal: TopicAiSummary["action_proposal"]; execution: { comment_id: string } | null }>(`/api/ai/action-proposals/${proposalId}/decision`, { method: "POST", body: JSON.stringify({ decision, expected_version: expectedVersion }) }),
+  listMembers: () => request<{ members: FamilyMember[] }>("/api/family/members"),
+  listInvitations: () => request<{ invitations: FamilyInvitation[] }>("/api/family/invitations"),
+  createInvitation: (role: Exclude<FamilyMemberRole, "owner">, expiresInDays: number) => request<CreatedFamilyInvitation>("/api/family/invitations", { method: "POST", body: JSON.stringify({ role, expires_in_days: expiresInDays }) }),
+  revokeInvitation: (invitationId: string) => request<{ invitation_id: string }>(`/api/family/invitations/${invitationId}`, { method: "DELETE" }),
+  updateMemberRole: (userId: string, role: Exclude<FamilyMemberRole, "owner">) => request<FamilyMember>(`/api/family/members/${userId}/role`, { method: "PATCH", body: JSON.stringify({ role }) }),
 };
 
 export const authApi = {
@@ -216,6 +226,8 @@ export const authApi = {
   register: (email: string, password: string, householdName: string) => request<AuthIdentity>("/api/auth/register", { method: "POST", body: JSON.stringify({ email, password, household_name: householdName }) }),
   requestPasswordReset: (email: string) => request<{ ok: true; message: string }>("/api/auth/password-reset/request", { method: "POST", body: JSON.stringify({ email }) }),
   confirmPasswordReset: (token: string, password: string) => request<{ ok: true; message: string }>("/api/auth/password-reset/confirm", { method: "POST", body: JSON.stringify({ token, password }) }),
+  previewInvitation: (token: string) => request<HouseholdInvitationPreview>(`/api/auth/invitations/preview?token=${encodeURIComponent(token)}`),
+  acceptInvitation: (token: string, email: string, password: string) => request<AuthIdentity>("/api/auth/invitations/accept", { method: "POST", body: JSON.stringify({ token, email, password }) }),
   logout: () => request<{ ok: boolean }>("/api/auth/logout", { method: "POST" }),
 };
 

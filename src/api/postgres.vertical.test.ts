@@ -74,7 +74,7 @@ function splitSql(input: string): string[] {
 }
 
 async function applyMigrations(db: PGlite) {
-  for (const file of ["db/migrations/0001_life_core_finance.sql", "db/migrations/0002_finance_import_state.sql", "db/migrations/0003_life_app_privileges.sql", "db/migrations/0004_family_space_ai.sql", "db/migrations/0005_finance_ledger_foundation.sql", "db/migrations/0006_finance_management_foundation.sql", "db/migrations/0007_finance_permissions.sql", "db/migrations/0008_finance_ai.sql", "db/migrations/0009_finance_production_hardening.sql", "db/migrations/0010_auth_sessions.sql", "db/migrations/0011_password_reset.sql"]) {
+  for (const file of ["db/migrations/0001_life_core_finance.sql", "db/migrations/0002_finance_import_state.sql", "db/migrations/0003_life_app_privileges.sql", "db/migrations/0004_family_space_ai.sql", "db/migrations/0005_finance_ledger_foundation.sql", "db/migrations/0006_finance_management_foundation.sql", "db/migrations/0007_finance_permissions.sql", "db/migrations/0008_finance_ai.sql", "db/migrations/0009_finance_production_hardening.sql", "db/migrations/0010_auth_sessions.sql", "db/migrations/0011_password_reset.sql", "db/migrations/0012_household_invitations.sql"]) {
     let sql = await readFile(file, "utf8");
     sql = sql.replace("CREATE EXTENSION IF NOT EXISTS pgcrypto;", "-- pgcrypto is not bundled in PGlite").replaceAll("DEFAULT gen_random_uuid()", "");
     for (const statement of splitSql(sql)) await db.query(statement);
@@ -313,6 +313,93 @@ describe("PostgreSQL finance vertical slice", () => {
     const limitedRequest = await authApp.inject({ method: "POST", url: "/api/auth/password-reset/request", payload: { email: "a@example.invalid" } });
     expect(limitedRequest.statusCode).toBe(429);
     expect(Number(limitedRequest.headers["retry-after"])).toBeGreaterThan(0);
+  });
+
+  it("accepts one-time household invitations and restricts role management to the owner", async () => {
+    const authStore = new SqlAuthStore(pool);
+    const authApp = buildServer({
+      authStore,
+      financeFactory: (scope) => new SqlFinanceRepository(pool, scope, importStore),
+      familyFactory: (scope) => new SqlFamilyRepository(pool, scope),
+      importObjectStore: importStore,
+    });
+
+    const ownerLogin = await authApp.inject({ method: "POST", url: "/api/auth/login", payload: { email: "a@example.invalid", password: "secret-password" } });
+    const ownerCookieHeader = ownerLogin.headers["set-cookie"];
+    const ownerCookie = String(Array.isArray(ownerCookieHeader) ? ownerCookieHeader[0] : ownerCookieHeader).split(";")[0];
+    const initialMembers = await authApp.inject({ method: "GET", url: "/api/family/members", headers: { cookie: ownerCookie } });
+    expect(initialMembers.statusCode, initialMembers.body).toBe(200);
+    expect(initialMembers.json().members).toHaveLength(1);
+    expect(initialMembers.json().members[0].role).toBe("owner");
+
+    const created = await authApp.inject({ method: "POST", url: "/api/family/invitations", headers: { cookie: ownerCookie }, payload: { role: "child", expires_in_days: 7 } });
+    expect(created.statusCode).toBe(201);
+    const invitation = created.json();
+    expect(invitation.status).toBe("active");
+    expect(invitation.invite_code).toHaveLength(32);
+    await db.query("RESET ROLE");
+    const storedInvitation = await db.query<{ token_hash: string }>("SELECT token_hash FROM household_invitation WHERE id = $1", [invitation.id]);
+    await db.query("SET ROLE life_app");
+    expect(storedInvitation.rows[0].token_hash).toBe(createHash("sha256").update(invitation.invite_code).digest("hex"));
+    expect(storedInvitation.rows[0].token_hash).not.toContain(invitation.invite_code);
+
+    const preview = await authApp.inject({ method: "GET", url: `/api/auth/invitations/preview?token=${encodeURIComponent(invitation.invite_code)}` });
+    expect(preview.statusCode).toBe(200);
+    expect(preview.json()).toMatchObject({ status: "active", householdName: "家庭 A", inviterEmail: "a@example.invalid", role: "child" });
+
+    const alreadyBelongs = await authApp.inject({ method: "POST", url: "/api/auth/invitations/accept", payload: { token: invitation.invite_code, email: "b@example.invalid", password: "invited-password" } });
+    expect(alreadyBelongs.statusCode).toBe(409);
+    expect(alreadyBelongs.json().code).toBe("ACCOUNT_ALREADY_HAS_HOUSEHOLD");
+
+    const accepted = await authApp.inject({ method: "POST", url: "/api/auth/invitations/accept", payload: { token: invitation.invite_code, email: "child-new@example.invalid", password: "invited-password" } });
+    expect(accepted.statusCode).toBe(201);
+    expect(accepted.json().household).toMatchObject({ id: householdA, name: "家庭 A", role: "child" });
+    const childCookieHeader = accepted.headers["set-cookie"];
+    const childCookie = String(Array.isArray(childCookieHeader) ? childCookieHeader[0] : childCookieHeader).split(";")[0];
+    const childUserId = accepted.json().user.id;
+
+    const replay = await authApp.inject({ method: "POST", url: "/api/auth/invitations/accept", payload: { token: invitation.invite_code, email: "other@example.invalid", password: "invited-password" } });
+    expect(replay.statusCode).toBe(409);
+    expect(replay.json().code).toBe("INVITATION_USED");
+
+    const childMembers = await authApp.inject({ method: "GET", url: "/api/family/members", headers: { cookie: childCookie } });
+    expect(childMembers.statusCode).toBe(200);
+    expect(childMembers.json().members.map((item: { role: string }) => item.role)).toEqual(["owner", "child"]);
+    const childInvitations = await authApp.inject({ method: "GET", url: "/api/family/invitations", headers: { cookie: childCookie } });
+    expect(childInvitations.statusCode).toBe(403);
+    const childRoleChange = await authApp.inject({ method: "PATCH", url: `/api/family/members/${childUserId}/role`, headers: { cookie: childCookie }, payload: { role: "adult" } });
+    expect(childRoleChange.statusCode).toBe(403);
+
+    const grant = await authApp.inject({ method: "PATCH", url: `/api/finance/permissions/${childUserId}`, headers: { cookie: ownerCookie }, payload: { can_view: true, can_bookkeep: true, can_edit: false, can_import: false, can_reconcile: false, can_export: false } });
+    expect(grant.statusCode).toBe(200);
+    const roleChanged = await authApp.inject({ method: "PATCH", url: `/api/family/members/${childUserId}/role`, headers: { cookie: ownerCookie }, payload: { role: "adult" } });
+    expect(roleChanged.statusCode).toBe(200);
+    expect(roleChanged.json().role).toBe("adult");
+    await db.query("RESET ROLE");
+    const resetPermission = await db.query<{ revoked_at: string | null }>("SELECT revoked_at::text AS revoked_at FROM financial_permission WHERE household_id = $1 AND user_id = $2", [householdA, childUserId]);
+    await db.query("SET ROLE life_app");
+    expect(resetPermission.rows[0].revoked_at).not.toBeNull();
+
+    const second = await authApp.inject({ method: "POST", url: "/api/family/invitations", headers: { cookie: ownerCookie }, payload: { role: "guest", expires_in_days: 1 } });
+    const revoked = await authApp.inject({ method: "DELETE", url: `/api/family/invitations/${second.json().id}`, headers: { cookie: ownerCookie } });
+    expect(revoked.statusCode).toBe(200);
+    const revokedAccept = await authApp.inject({ method: "POST", url: "/api/auth/invitations/accept", payload: { token: second.json().invite_code, email: "revoked@example.invalid", password: "invited-password" } });
+    expect(revokedAccept.statusCode).toBe(410);
+    expect(revokedAccept.json().code).toBe("INVITATION_REVOKED");
+
+    const third = await authApp.inject({ method: "POST", url: "/api/family/invitations", headers: { cookie: ownerCookie }, payload: { role: "adult", expires_in_days: 1 } });
+    await db.query("RESET ROLE");
+    await db.query("UPDATE household_invitation SET created_at = now() - interval '2 days', expires_at = now() - interval '1 minute' WHERE id = $1", [third.json().id]);
+    await db.query("SET ROLE life_app");
+    const expiredAccept = await authApp.inject({ method: "POST", url: "/api/auth/invitations/accept", payload: { token: third.json().invite_code, email: "expired@example.invalid", password: "invited-password" } });
+    expect(expiredAccept.statusCode).toBe(410);
+    expect(expiredAccept.json().code).toBe("INVITATION_EXPIRED");
+
+    const ownerLocked = await authApp.inject({ method: "PATCH", url: `/api/family/members/${userA}/role`, headers: { cookie: ownerCookie }, payload: { role: "adult" } });
+    expect(ownerLocked.statusCode).toBe(409);
+    await db.query("RESET ROLE");
+    const audit = await db.query<{ count: number }>("SELECT count(*)::int AS count FROM audit_log WHERE household_id = $1 AND action IN ('household_invitation.create', 'household_invitation.revoke', 'household_member.role_update')", [householdA]);
+    expect(audit.rows[0].count).toBe(5);
   });
 
   it("enqueues a permissioned CSV export, completes it asynchronously, expires it, and serves only the household file", async () => {
@@ -659,7 +746,7 @@ describe("PostgreSQL finance vertical slice", () => {
     expect(deniedOverview.statusCode).toBe(403);
 
     const granted = await app.inject({ method: "PATCH", url: `/api/finance/permissions/${userC}`, payload: { can_view: true, can_bookkeep: false, can_edit: false, can_import: false, can_reconcile: false, can_export: false } });
-    expect(granted.statusCode).toBe(200);
+    expect(granted.statusCode, granted.body).toBe(200);
     expect(granted.json().can_view).toBe(true);
     const allowedOverview = await childApp.inject({ method: "GET", url: "/api/finance/overview?start=2026-08-01&end=2026-08-31&granularity=day" });
     expect(allowedOverview.statusCode).toBe(200);

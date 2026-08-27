@@ -1,8 +1,8 @@
-import { useState } from "react";
-import { ApiRequestError, type AuthIdentity } from "../api";
+import { useEffect, useRef, useState } from "react";
+import { ApiRequestError, type AuthIdentity, type HouseholdInvitationPreview } from "../api";
 import { BunnyMark } from "./BunnyMark";
 
-type AuthMode = "login" | "register" | "recovery" | "recoverySent" | "reset" | "resetComplete";
+type AuthMode = "login" | "register" | "join" | "recovery" | "recoverySent" | "reset" | "resetComplete";
 
 export function AuthLoading() {
   return (
@@ -22,23 +22,29 @@ export function AuthLoading() {
 export function AuthPage(props: {
   serviceMessage?: string | null;
   resetToken?: string | null;
+  inviteToken?: string | null;
   onLogin: (email: string, password: string) => Promise<AuthIdentity>;
   onRegister: (email: string, password: string, householdName: string) => Promise<AuthIdentity>;
   onRequestPasswordReset: (email: string) => Promise<unknown>;
   onConfirmPasswordReset: (token: string, password: string) => Promise<unknown>;
+  onPreviewInvitation: (token: string) => Promise<HouseholdInvitationPreview>;
+  onAcceptInvitation: (token: string, email: string, password: string) => Promise<AuthIdentity>;
   onPasswordResetCompleted: () => void;
   onAuthenticated: (identity: AuthIdentity) => void;
   onRetrySession: () => Promise<void>;
 }) {
-  const [mode, setMode] = useState<AuthMode>(() => props.resetToken ? "reset" : "login");
+  const [mode, setMode] = useState<AuthMode>(() => props.resetToken ? "reset" : props.inviteToken ? "join" : "login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmedPassword, setConfirmedPassword] = useState("");
   const [householdName, setHouseholdName] = useState("");
+  const [invitationCode, setInvitationCode] = useState(props.inviteToken ?? "");
+  const [invitation, setInvitation] = useState<HouseholdInvitationPreview | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [accepted, setAccepted] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const automaticallyPreviewed = useRef<string | null>(null);
 
   const selectMode = (next: AuthMode) => {
     setMode(next);
@@ -60,6 +66,22 @@ export function AuthPage(props: {
       setError(reason instanceof Error ? reason.message : fallback);
     }
   };
+
+  const previewInvitation = async (code = invitationCode) => {
+    const normalized = normalizeInvitationCode(code);
+    if (!normalized) return setError("请粘贴邀请码或邀请链接中的代码");
+    if (normalized !== invitationCode) setInvitationCode(normalized);
+    setBusy(true); setError(null); setInvitation(null);
+    try { setInvitation(await props.onPreviewInvitation(normalized)); }
+    catch (reason) { showError(reason, "邀请码暂时无法检查"); }
+    finally { setBusy(false); }
+  };
+
+  useEffect(() => {
+    if (!props.inviteToken || automaticallyPreviewed.current === props.inviteToken) return;
+    automaticallyPreviewed.current = props.inviteToken;
+    void previewInvitation(props.inviteToken);
+  }, [props.inviteToken]);
 
   const submitIdentity = async () => {
     const normalizedEmail = email.trim().toLowerCase();
@@ -119,6 +141,18 @@ export function AuthPage(props: {
     }
   };
 
+  const acceptInvitation = async () => {
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!invitation || invitation.status !== "active") return setError("请先检查有效的邀请码");
+    if (!isEmail(normalizedEmail)) return setError("请输入有效的邮箱地址");
+    if (password.length < 8) return setError("密码至少需要 8 位");
+    if (!accepted) return setError("请先确认一个账号只能属于一个家庭");
+    setBusy(true); setError(null);
+    try { props.onAuthenticated(await props.onAcceptInvitation(invitationCode.trim(), normalizedEmail, password)); }
+    catch (reason) { showError(reason, "暂时无法加入这个家庭"); }
+    finally { setBusy(false); }
+  };
+
   const copy = heroCopy(mode);
   return (
     <div className="auth-shell">
@@ -147,8 +181,21 @@ export function AuthPage(props: {
                 {mode === "login" ? <button type="button" className="auth-link" onClick={() => selectMode("recovery")}>忘记密码？</button> : <label className="auth-consent"><input type="checkbox" checked={accepted} onChange={(event) => setAccepted(event.target.checked)} disabled={busy} /><span><strong>确认创建唯一家庭</strong><small>一个账号不能加入多个家庭；家庭数据和 AI 连接相互隔离。</small></span></label>}
                 <AuthMessage error={error} serviceMessage={props.serviceMessage} onRetry={props.onRetrySession} />
                 <button type="submit" className="primary-button auth-submit" disabled={busy} aria-busy={busy}>{busy ? <><Spinner />{mode === "register" ? "正在创建家庭" : "正在登录"}</> : mode === "register" ? "注册并进入 Life" : "进入我的家庭"}</button>
+                {mode === "login" && <button type="button" className="secondary-button wide auth-join-entry" onClick={() => { setInvitation(null); setAccepted(false); selectMode("join"); }}>使用邀请码加入家庭</button>}
               </form>
             </>
+          )}
+
+          {mode === "join" && (
+            <form className="auth-form auth-join-form" onSubmit={(event) => { event.preventDefault(); invitation ? void acceptInvitation() : void previewInvitation(); }} noValidate>
+              <div className="auth-state-copy"><h2>加入一个家庭</h2><p>邀请码只能使用一次。加入后，这个账号不能再创建或加入其他家庭。</p></div>
+              <label><span>邀请码</span><div className="auth-invite-code"><input autoFocus={!props.inviteToken} name="invite-code" value={invitationCode} onChange={(event) => { setInvitationCode(event.target.value); setInvitation(null); setError(null); }} autoCapitalize="none" spellCheck={false} maxLength={512} placeholder="粘贴邀请码" disabled={busy} /><button type="button" disabled={busy || !invitationCode.trim()} onClick={() => void previewInvitation()}>检查</button></div></label>
+              {invitation && <article className={`auth-invitation-preview ${invitation.status}`}><div className="auth-invitation-mark"><BunnyMark size={42} /></div><div><span>{invitation.status === "active" ? "有效邀请" : invitation.status === "expired" ? "邀请已过期" : invitation.status === "revoked" ? "邀请已撤销" : "邀请已使用"}</span><strong>{invitation.householdName}</strong><p>{invitation.inviterEmail} 邀请你作为{invitationRoleName(invitation.role)}加入</p></div></article>}
+              {invitation?.status === "active" && <><EmailField value={email} onChange={setEmail} disabled={busy} /><PasswordField name="password" value={password} onChange={setPassword} shown={showPassword} onToggle={() => setShowPassword((value) => !value)} autoComplete="new-password" placeholder="至少 8 位" maxLength={128} disabled={busy} /><label className="auth-consent"><input type="checkbox" checked={accepted} onChange={(event) => setAccepted(event.target.checked)} disabled={busy} /><span><strong>确认加入唯一家庭</strong><small>如果该邮箱已经注册，系统会拒绝加入第二个家庭。</small></span></label></>}
+              <AuthMessage error={error} />
+              <button type="submit" className="primary-button auth-submit" disabled={busy || !invitationCode.trim() || Boolean(invitation && invitation.status !== "active")} aria-busy={busy}>{busy ? <><Spinner />正在处理</> : invitation?.status === "active" ? "注册并加入家庭" : "检查邀请码"}</button>
+              <button type="button" className="secondary-button wide" disabled={busy} onClick={() => selectMode("login")}>返回登录</button>
+            </form>
           )}
 
           {mode === "recovery" && (
@@ -210,7 +257,16 @@ function heroCopy(mode: AuthMode) {
   if (mode === "register") return { title: "从一个独立家庭开始", body: "注册会同时创建你的唯一家庭，并由你担任家庭所有者。" };
   if (mode === "recovery" || mode === "recoverySent") return { title: "找回你的登录", body: "重置过程不会泄露账号是否存在，链接只允许使用一次。" };
   if (mode === "reset" || mode === "resetComplete") return { title: "重新保护你的账号", body: "更新密码后，所有旧会话会立即失效。" };
+  if (mode === "join") return { title: "和家人在同一个空间", body: "先确认家庭和角色，再用一个全新账号安全加入。" };
   return { title: "欢迎回到家里", body: "你的账本、讨论和 AI 记忆只属于当前家庭。" };
+}
+
+function invitationRoleName(role: HouseholdInvitationPreview["role"]) { return role === "adult" ? "成人成员" : role === "child" ? "儿童成员" : "访客成员"; }
+function normalizeInvitationCode(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  try { return new URL(trimmed).searchParams.get("invite_token")?.trim() || trimmed; }
+  catch { return trimmed; }
 }
 
 function formatWait(seconds: number) {
