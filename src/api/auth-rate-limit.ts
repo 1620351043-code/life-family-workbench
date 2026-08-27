@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-export type AuthRateLimitOperation = "login" | "register" | "password_reset_request" | "password_reset_confirm";
+export type AuthRateLimitOperation = "login" | "register" | "password_reset_request" | "password_reset_confirm" | "invitation_preview" | "invitation_accept";
 export type AuthRateLimitInput = { operation: AuthRateLimitOperation; email: string; ipAddress?: string | null };
 export type AuthRateLimitDecision = { allowed: boolean; retryAfterSeconds: number };
 
@@ -18,6 +18,8 @@ export type InMemoryAuthAttemptLimiterOptions = {
   register?: Partial<LimitRule>;
   password_reset_request?: Partial<LimitRule>;
   password_reset_confirm?: Partial<LimitRule>;
+  invitation_preview?: Partial<LimitRule>;
+  invitation_accept?: Partial<LimitRule>;
   maxEntries?: number;
   now?: () => number;
 };
@@ -27,6 +29,8 @@ const DEFAULT_RULES: Record<AuthRateLimitOperation, LimitRule> = {
   register: { maxFailures: 5, windowMs: 60 * 60_000, blockMs: 60 * 60_000 },
   password_reset_request: { maxFailures: 3, windowMs: 60 * 60_000, blockMs: 60 * 60_000 },
   password_reset_confirm: { maxFailures: 5, windowMs: 15 * 60_000, blockMs: 15 * 60_000 },
+  invitation_preview: { maxFailures: 10, windowMs: 15 * 60_000, blockMs: 15 * 60_000 },
+  invitation_accept: { maxFailures: 5, windowMs: 60 * 60_000, blockMs: 60 * 60_000 },
 };
 
 function secondsUntil(timestamp: number, now: number) {
@@ -45,6 +49,8 @@ export class InMemoryAuthAttemptLimiter implements AuthAttemptLimiter {
       register: { ...DEFAULT_RULES.register, ...options.register },
       password_reset_request: { ...DEFAULT_RULES.password_reset_request, ...options.password_reset_request },
       password_reset_confirm: { ...DEFAULT_RULES.password_reset_confirm, ...options.password_reset_confirm },
+      invitation_preview: { ...DEFAULT_RULES.invitation_preview, ...options.invitation_preview },
+      invitation_accept: { ...DEFAULT_RULES.invitation_accept, ...options.invitation_accept },
     };
     this.maxEntries = Math.max(100, options.maxEntries ?? 10_000);
     this.now = options.now ?? Date.now;

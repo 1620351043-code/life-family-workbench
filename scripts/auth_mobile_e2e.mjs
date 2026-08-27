@@ -145,6 +145,80 @@ try {
     await registrationPage.close();
     await registrationContext.close();
   }
+
+  const invitationContext = await browser.newContext({ viewport: { width: 430, height: 932 } });
+  const invitationPage = await invitationContext.newPage();
+  const invitedEmail = `invited-child-${Date.now()}@example.invalid`;
+  try {
+    await invitationPage.goto(baseUrl, { waitUntil: "networkidle" });
+    await invitationPage.locator('input[name="email"]').fill(seededEmail);
+    await invitationPage.locator('input[name="password"]').fill(seededPassword);
+    await invitationPage.getByRole("button", { name: "进入我的家庭" }).click();
+    await invitationPage.getByRole("navigation", { name: "主导航" }).waitFor();
+    await invitationPage.getByRole("button", { name: "更多" }).click();
+    await invitationPage.getByRole("button", { name: "家庭与成员" }).click();
+    await invitationPage.getByText("家里的人", { exact: true }).waitFor();
+    await invitationPage.getByText(seededEmail, { exact: true }).waitFor();
+    const memberAudits = [];
+    for (const viewport of viewports) {
+      await invitationPage.setViewportSize({ width: viewport.width, height: viewport.height });
+      const layout = await auditAuthLayout(invitationPage);
+      if (layout.rootScrollWidth > layout.rootWidth) throw new Error(`members ${viewport.name}: horizontal overflow ${layout.rootScrollWidth} > ${layout.rootWidth}`);
+      if (layout.overflowingContainers.length) throw new Error(`members ${viewport.name}: nested horizontal overflow ${JSON.stringify(layout.overflowingContainers)}`);
+      if (layout.narrowControls.length) throw new Error(`members ${viewport.name}: control below 44pt ${JSON.stringify(layout.narrowControls)}`);
+      await invitationPage.screenshot({ path: `${outputDir}/members-owner-${viewport.name}.png`, fullPage: false });
+      memberAudits.push({ viewport, ...layout });
+    }
+    await invitationPage.setViewportSize({ width: 430, height: 932 });
+    await invitationPage.getByRole("button", { name: "＋ 邀请成员" }).click();
+    await invitationPage.getByRole("button", { name: /^儿童/ }).click();
+    await invitationPage.getByRole("button", { name: "生成一次性邀请码" }).click();
+    await invitationPage.getByText("邀请已经准备好", { exact: true }).waitFor();
+    const inviteCode = (await invitationPage.locator(".created-invite code").textContent())?.trim();
+    if (!inviteCode) throw new Error("created invitation code missing");
+    await invitationPage.screenshot({ path: `${outputDir}/invite-created-430x932.png`, fullPage: false });
+    await invitationPage.getByRole("button", { name: "完成" }).click();
+    await invitationPage.getByRole("button", { name: "返回更多" }).click();
+    await invitationPage.getByRole("button", { name: "退出登录" }).click();
+    await invitationPage.getByRole("button", { name: "进入我的家庭" }).waitFor();
+
+    await invitationPage.goto(`${baseUrl}/?invite_token=${encodeURIComponent(inviteCode)}`, { waitUntil: "networkidle" });
+    await invitationPage.getByText("加入一个家庭", { exact: true }).waitFor();
+    await invitationPage.getByText("移动端验收家庭", { exact: true }).waitFor();
+    await invitationPage.locator('input[name="email"]').fill(invitedEmail);
+    await invitationPage.locator('input[name="password"]').fill("invited-child-password");
+    await invitationPage.locator('.auth-consent input[type="checkbox"]').check();
+    const joinAudit = await auditAuthLayout(invitationPage);
+    if (joinAudit.rootScrollWidth > joinAudit.rootWidth) throw new Error(`join: horizontal overflow ${joinAudit.rootScrollWidth} > ${joinAudit.rootWidth}`);
+    if (joinAudit.overflowingContainers.length) throw new Error(`join: nested horizontal overflow ${JSON.stringify(joinAudit.overflowingContainers)}`);
+    if (joinAudit.narrowControls.length) throw new Error(`join: control below 44pt ${JSON.stringify(joinAudit.narrowControls)}`);
+    await invitationPage.screenshot({ path: `${outputDir}/invite-join-430x932.png`, fullPage: false });
+    await invitationPage.getByRole("button", { name: "注册并加入家庭" }).click();
+    await invitationPage.getByRole("navigation", { name: "主导航" }).waitFor();
+    await invitationPage.getByRole("button", { name: "更多" }).click();
+    await invitationPage.getByRole("button", { name: "家庭与成员" }).click();
+    await invitationPage.getByText(invitedEmail, { exact: true }).waitFor();
+    await invitationPage.getByText("儿童成员 · 当前账号", { exact: true }).waitFor();
+    await invitationPage.screenshot({ path: `${outputDir}/members-child-430x932.png`, fullPage: false });
+    await invitationPage.getByRole("button", { name: "返回更多" }).click();
+    await invitationPage.getByRole("button", { name: "退出登录" }).click();
+
+    await invitationPage.locator('input[name="email"]').fill(seededEmail);
+    await invitationPage.locator('input[name="password"]').fill(seededPassword);
+    await invitationPage.getByRole("button", { name: "进入我的家庭" }).click();
+    await invitationPage.getByRole("navigation", { name: "主导航" }).waitFor();
+    await invitationPage.getByRole("button", { name: "更多" }).click();
+    await invitationPage.getByRole("button", { name: "家庭与成员" }).click();
+    await invitationPage.getByRole("button", { name: `管理 ${invitedEmail} 的角色` }).click();
+    await invitationPage.locator(".family-role-sheet .family-role-segments button").filter({ hasText: "成人" }).click();
+    await invitationPage.getByRole("button", { name: "确认修改" }).click();
+    await invitationPage.getByRole("button", { name: `管理 ${invitedEmail} 的角色` }).filter({ hasText: "成人" }).waitFor();
+    await invitationPage.screenshot({ path: `${outputDir}/member-role-updated-430x932.png`, fullPage: false });
+    results.push({ invitationFlow: true, invitedEmail, oneHousehold: "移动端验收家庭", childJoined: true, ownerRoleUpdated: true, memberAudits, joinAudit });
+  } finally {
+    await invitationPage.close();
+    await invitationContext.close();
+  }
 } finally {
   if (ownsBrowser) await browser.close();
 }
@@ -167,6 +241,12 @@ async function auditAuthLayout(page) {
       rootWidth: root.clientWidth,
       rootScrollWidth: root.scrollWidth,
       authVisible: Boolean(document.querySelector(".auth-card")),
+      overflowingContainers: [...document.querySelectorAll(".content-scroll, .sheet, .auth-frame")].map((node) => ({
+        className: node.className,
+        clientWidth: Math.round(node.clientWidth),
+        scrollWidth: Math.round(node.scrollWidth),
+        scrollLeft: Math.round(node.scrollLeft),
+      })).filter((item) => item.scrollWidth > item.clientWidth + 1 || item.scrollLeft !== 0),
       narrowControls: controls.filter((item) => item.width < 44 || item.height < 44),
     };
   });

@@ -14,7 +14,7 @@ button { border: 0; cursor: pointer; color: inherit; }
 .brand-mark small { display: block; margin-top: 2px; color: #73799a; font-size: 11px; }
 .bunny-mark { display: grid; place-items: center; width: 42px; height: 42px; border-radius: 15px; background: linear-gradient(145deg, #cbbfff, #fff0f6); box-shadow: 0 5px 14px rgba(117, 88, 189, .2); font-size: 26px; }
 .bunny-button { min-height: 44px; padding: 0 13px; border-radius: 16px; background: linear-gradient(135deg, #6d7dfd, #9560e8); color: #fff; box-shadow: 0 8px 18px rgba(94, 88, 216, .26); font-size: 12px; display: flex; gap: 6px; align-items: center; }
-.content-scroll { flex: 1; overflow: auto; padding: 0 16px 104px; scrollbar-width: none; }
+.content-scroll { flex: 1; min-width: 0; overflow-x: hidden; overflow-y: auto; padding: 0 16px 104px; scrollbar-width: none; }
 .content-scroll::-webkit-scrollbar { display: none; }
 .error-banner { margin: 3px 0 12px; padding: 11px 12px; border-radius: 14px; background: #fff0f0; color: #b34b64; font-size: 12px; display: flex; align-items: center; gap: 8px; }
 .error-banner button { margin-left: auto; background: transparent; color: inherit; font-size: 11px; }
@@ -98,8 +98,9 @@ h1, h2, h3, p { margin: 0; }
 .identity-card p { margin-top: 4px; color: var(--life-text-secondary); font-size: var(--life-text-supporting); }
 .identity-card span { width: fit-content; margin-top: 7px; padding: 4px 8px; border-radius: 99px; background: #eeecff; color: var(--life-accent-strong); font-size: var(--life-text-compact); }
 .security-summary { display: grid; gap: 9px; margin-top: 14px; }
-.security-summary > div { display: grid; grid-template-columns: 38px minmax(0, 1fr); align-items: center; gap: 10px; min-height: 68px; padding: 12px 14px; border: 1px solid var(--life-line); border-radius: 19px; background: var(--life-surface-content); }
-.security-summary > div > span { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 13px; background: linear-gradient(145deg, #e4e0ff, #ffe8ee); color: var(--life-accent-strong); }
+.security-summary > div, .security-summary > button { display: grid; grid-template-columns: 38px minmax(0, 1fr) auto; align-items: center; gap: 10px; min-height: 68px; padding: 12px 14px; border: 1px solid var(--life-line); border-radius: 19px; background: var(--life-surface-content); text-align: left; }
+.security-summary > div > span, .security-summary > button > span { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 13px; background: linear-gradient(145deg, #e4e0ff, #ffe8ee); color: var(--life-accent-strong); }
+.security-summary > button b { color: var(--life-text-tertiary); font-size: 22px; font-weight: 400; }
 .security-summary p { min-width: 0; }
 .security-summary strong, .security-summary small { display: block; }
 .security-summary strong { font-size: var(--life-text-supporting); }

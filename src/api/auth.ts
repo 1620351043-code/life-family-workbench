@@ -21,6 +21,20 @@ export type AuthIdentity = {
 
 export type AuthSession = { scope: FinanceScope; identity: AuthIdentity };
 
+export type HouseholdInvitationPreview = {
+  status: "active" | "expired" | "revoked" | "used" | "invalid";
+  invitationId: string | null;
+  householdId: string | null;
+  householdName: string | null;
+  inviterEmail: string | null;
+  role: "adult" | "child" | "guest" | null;
+  expiresAt: string | null;
+};
+
+export type HouseholdInvitationAcceptance =
+  | { status: "accepted"; token: string; session: AuthSession }
+  | { status: "invalid" | "expired" | "revoked" | "used" | "email_registered" };
+
 export type AuthStore = {
   authenticate(email: string, password: string, metadata?: { userAgent?: string | null; ipAddress?: string | null }): Promise<{ token: string; session: AuthSession } | null>;
   register(email: string, password: string, householdName: string, metadata?: { userAgent?: string | null; ipAddress?: string | null }): Promise<{ token: string; session: AuthSession } | null>;
@@ -28,6 +42,8 @@ export type AuthStore = {
   revokeSession(token: string): Promise<void>;
   createPasswordReset(email: string, metadata?: { userAgent?: string | null; ipAddress?: string | null }): Promise<{ email: string; token: string; expiresAt: string } | null>;
   applyPasswordReset(token: string, password: string): Promise<boolean>;
+  previewInvitation(token: string): Promise<HouseholdInvitationPreview>;
+  acceptInvitation(token: string, email: string, password: string, metadata?: { userAgent?: string | null; ipAddress?: string | null }): Promise<HouseholdInvitationAcceptance>;
 };
 
 function hashToken(token: string) {
@@ -203,6 +219,66 @@ export class SqlAuthStore implements AuthStore {
         [tokenHash, passwordHash],
       );
       return result.rows[0]?.applied === true;
+    } finally {
+      client.release?.();
+    }
+  }
+
+  async previewInvitation(token: string): Promise<HouseholdInvitationPreview> {
+    if (!token || token.length > 512) return { status: "invalid", invitationId: null, householdId: null, householdName: null, inviterEmail: null, role: null, expiresAt: null };
+    const client = await this.pool.connect();
+    try {
+      const result = await client.query<Record<string, unknown>>(
+        "SELECT * FROM life_auth_preview_household_invitation($1)",
+        [hashToken(token)],
+      );
+      const row = result.rows[0];
+      if (!row) return { status: "invalid", invitationId: null, householdId: null, householdName: null, inviterEmail: null, role: null, expiresAt: null };
+      return {
+        status: String(row.invitation_status) as HouseholdInvitationPreview["status"],
+        invitationId: String(row.invitation_id),
+        householdId: String(row.household_id),
+        householdName: String(row.household_name),
+        inviterEmail: String(row.inviter_email),
+        role: String(row.role) as HouseholdInvitationPreview["role"],
+        expiresAt: String(row.expires_at),
+      };
+    } finally {
+      client.release?.();
+    }
+  }
+
+  async acceptInvitation(token: string, email: string, password: string, metadata: { userAgent?: string | null; ipAddress?: string | null } = {}): Promise<HouseholdInvitationAcceptance> {
+    if (!token || token.length > 512) return { status: "invalid" };
+    const preview = await this.previewInvitation(token);
+    if (preview.status !== "active") return { status: preview.status };
+    const passwordHash = await hashPassword(password);
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const result = await client.query<Record<string, unknown>>(
+        "SELECT * FROM life_auth_accept_household_invitation($1, $2, $3, $4, $5)",
+        [randomUUID(), randomUUID(), email.trim(), passwordHash, hashToken(token)],
+      );
+      const row = result.rows[0];
+      const status = String(row?.invitation_status ?? "invalid") as HouseholdInvitationAcceptance["status"];
+      if (status !== "accepted") {
+        await client.query("COMMIT");
+        return { status } as HouseholdInvitationAcceptance;
+      }
+      const identity = identityFromRow(row);
+      const sessionToken = randomBytes(32).toString("base64url");
+      await client.query(
+        `INSERT INTO user_session (id, user_id, household_id, token_hash, expires_at, user_agent, ip_address)
+         VALUES ($1, $2, $3, $4, now() + ($5 * interval '1 second'), $6, $7::inet)`,
+        [randomUUID(), identity.user.id, identity.household.id, hashToken(sessionToken), SESSION_TTL_SECONDS, metadata.userAgent?.slice(0, 500) ?? null, metadata.ipAddress ?? null],
+      );
+      await client.query("COMMIT");
+      return { status: "accepted", token: sessionToken, session: sessionFromIdentity(identity) };
+    } catch (error) {
+      try { await client.query("ROLLBACK"); } catch { /* preserve original error */ }
+      if (typeof error === "object" && error && "code" in error && (error as { code?: string }).code === "23505") return { status: "email_registered" };
+      throw error;
     } finally {
       client.release?.();
     }

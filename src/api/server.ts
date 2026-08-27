@@ -54,6 +54,16 @@ const passwordResetConfirmSchema = z.object({
   token: z.string().min(32, "密码重置链接无效").max(512, "密码重置链接无效"),
   password: z.string().min(8, "密码至少需要 8 位").max(128, "密码不能超过 128 位"),
 });
+const invitationTokenSchema = z.string().min(16, "邀请码无效").max(512, "邀请码无效");
+const invitationPreviewSchema = z.object({ token: invitationTokenSchema });
+const invitationAcceptSchema = z.object({
+  token: invitationTokenSchema,
+  email: z.string().email().max(320),
+  password: z.string().min(8, "密码至少需要 8 位").max(128, "密码不能超过 128 位"),
+});
+const invitationRoleSchema = z.enum(["adult", "child", "guest"]);
+const createInvitationSchema = z.object({ role: invitationRoleSchema, expires_in_days: z.number().int().min(1).max(30).default(7) });
+const memberRoleSchema = z.object({ role: invitationRoleSchema });
 
 export type FinanceRepositoryFactory = (scope: FinanceScope) => FinanceRepository;
 export type FamilyRepositoryFactory = (scope: FinanceScope) => FamilyRepository;
@@ -244,6 +254,53 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     authAttemptLimiter.recordSuccess(limitInput);
     setSessionCookie(reply, null);
     return { ok: true, message: "密码已更新，请重新登录" };
+  });
+
+  app.get("/api/auth/invitations/preview", async (request, reply) => {
+    if (!authStore) return reply.code(503).send({ code: "AUTH_NOT_CONFIGURED", message: "身份服务尚未配置", trace_id: request.id });
+    const input = invitationPreviewSchema.parse(request.query);
+    const limitInput: AuthRateLimitInput = { operation: "invitation_preview", email: input.token, ipAddress: request.ip };
+    const currentLimit = authAttemptLimiter.check(limitInput);
+    if (!currentLimit.allowed) {
+      reply.header("retry-after", String(currentLimit.retryAfterSeconds));
+      return reply.code(429).send({ code: "AUTH_RATE_LIMITED", message: "邀请码检查过于频繁，请稍后再试", retry_after_seconds: currentLimit.retryAfterSeconds, trace_id: request.id });
+    }
+    const invitation = await authStore.previewInvitation(input.token);
+    if (invitation.status === "invalid") {
+      authAttemptLimiter.recordFailure(limitInput);
+      return reply.code(400).send({ code: "INVITATION_INVALID", message: "邀请码不存在或格式不正确", trace_id: request.id });
+    }
+    authAttemptLimiter.recordSuccess(limitInput);
+    return invitation;
+  });
+
+  app.post("/api/auth/invitations/accept", async (request, reply) => {
+    if (!authStore) return reply.code(503).send({ code: "AUTH_NOT_CONFIGURED", message: "身份服务尚未配置", trace_id: request.id });
+    const input = invitationAcceptSchema.parse(request.body);
+    const limitInput: AuthRateLimitInput = { operation: "invitation_accept", email: input.token, ipAddress: request.ip };
+    const currentLimit = authAttemptLimiter.check(limitInput);
+    if (!currentLimit.allowed) {
+      reply.header("retry-after", String(currentLimit.retryAfterSeconds));
+      return reply.code(429).send({ code: "AUTH_RATE_LIMITED", message: "加入尝试过于频繁，请稍后再试", retry_after_seconds: currentLimit.retryAfterSeconds, trace_id: request.id });
+    }
+    const result = await authStore.acceptInvitation(input.token, input.email, input.password, { userAgent: headerValue(request, "user-agent"), ipAddress: request.ip });
+    if (result.status !== "accepted") {
+      const nextLimit = authAttemptLimiter.recordFailure(limitInput);
+      if (!nextLimit.allowed) reply.header("retry-after", String(nextLimit.retryAfterSeconds));
+      if (!nextLimit.allowed) return reply.code(429).send({ code: "AUTH_RATE_LIMITED", message: "加入尝试过于频繁，请稍后再试", retry_after_seconds: nextLimit.retryAfterSeconds, trace_id: request.id });
+      const errors = {
+        invalid: ["INVITATION_INVALID", "邀请码不存在或格式不正确", 400],
+        expired: ["INVITATION_EXPIRED", "邀请码已经过期，请联系家庭所有者重新生成", 410],
+        revoked: ["INVITATION_REVOKED", "邀请码已被撤销，请联系家庭所有者", 410],
+        used: ["INVITATION_USED", "邀请码已经被使用，请联系家庭所有者重新生成", 409],
+        email_registered: ["ACCOUNT_ALREADY_HAS_HOUSEHOLD", "该账号已经属于一个家庭，不能加入第二个家庭", 409],
+      } as const;
+      const [code, message, statusCode] = errors[result.status];
+      return reply.code(statusCode).send({ code, message, trace_id: request.id });
+    }
+    authAttemptLimiter.recordSuccess(limitInput);
+    setSessionCookie(reply, result.token);
+    return reply.code(201).send(result.session.identity);
   });
 
   app.post("/api/auth/logout", async (request, reply) => {
@@ -585,6 +642,40 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     const repository = options.familyFactory?.(scope);
     if (!repository) return requireFamilyFactory(reply, options.familyFactory);
     return repository.getSpaceHome();
+  });
+
+  app.get("/api/family/members", async (request, reply) => {
+    const scope = requireScope(request, reply, resolveScope); if (!scope) return;
+    const repository = options.familyFactory?.(scope); if (!repository) return requireFamilyFactory(reply, options.familyFactory);
+    return { members: await repository.listMembers() };
+  });
+
+  app.get("/api/family/invitations", async (request, reply) => {
+    const scope = requireScope(request, reply, resolveScope); if (!scope) return;
+    const repository = options.familyFactory?.(scope); if (!repository) return requireFamilyFactory(reply, options.familyFactory);
+    return { invitations: await repository.listInvitations() };
+  });
+
+  app.post("/api/family/invitations", async (request, reply) => {
+    const scope = requireScope(request, reply, resolveScope); if (!scope) return;
+    const input = createInvitationSchema.parse(request.body);
+    const repository = options.familyFactory?.(scope); if (!repository) return requireFamilyFactory(reply, options.familyFactory);
+    return reply.code(201).send(await repository.createInvitation(input.role, input.expires_in_days));
+  });
+
+  app.delete<{ Params: { invitationId: string } }>("/api/family/invitations/:invitationId", async (request, reply) => {
+    const scope = requireScope(request, reply, resolveScope); if (!scope) return;
+    const invitationId = z.string().uuid().parse(request.params.invitationId);
+    const repository = options.familyFactory?.(scope); if (!repository) return requireFamilyFactory(reply, options.familyFactory);
+    return repository.revokeInvitation(invitationId);
+  });
+
+  app.patch<{ Params: { userId: string } }>("/api/family/members/:userId/role", async (request, reply) => {
+    const scope = requireScope(request, reply, resolveScope); if (!scope) return;
+    const userId = z.string().uuid().parse(request.params.userId);
+    const input = memberRoleSchema.parse(request.body);
+    const repository = options.familyFactory?.(scope); if (!repository) return requireFamilyFactory(reply, options.familyFactory);
+    return repository.updateMemberRole(userId, input.role);
   });
 
   app.post("/api/family/topics", async (request, reply) => {

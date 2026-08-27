@@ -50,6 +50,21 @@
 .auth-state-copy { text-align: center; }
 .auth-state-copy h2 { font-size: var(--life-text-title); }
 .auth-state-copy p { max-width: 320px; margin: 8px auto 2px; color: var(--life-text-secondary); font-size: var(--life-text-supporting); line-height: 1.55; text-wrap: pretty; }
+.auth-join-entry { min-height: 48px; }
+.auth-join-form { margin-top: 0; }
+.auth-invite-code { display: grid; grid-template-columns: minmax(0, 1fr) 64px; border: 1px solid var(--life-line); border-radius: 16px; background: var(--life-surface-elevated); overflow: hidden; }
+.auth-invite-code:focus-within { border-color: rgba(91,114,244,.58); box-shadow: 0 0 0 4px rgba(91,114,244,.11); }
+.auth-invite-code input { border: 0 !important; border-radius: 0 !important; background: transparent !important; box-shadow: none !important; }
+.auth-invite-code button { min-width: 64px; min-height: 54px; background: rgba(237,236,255,.82); color: var(--life-accent-strong); font-size: 12px; font-weight: 700; }
+.auth-invitation-preview { display: grid; grid-template-columns: 54px minmax(0, 1fr); align-items: center; gap: 12px; padding: 13px; border: 1px solid rgba(87,151,122,.18); border-radius: 19px; background: #f1faf6; }
+.auth-invitation-preview:not(.active) { border-color: rgba(187,102,120,.17); background: #fff4f5; }
+.auth-invitation-mark { display: grid; place-items: center; width: 54px; height: 54px; border-radius: 18px; background: rgba(255,255,255,.72); }
+.auth-invitation-preview div:last-child { min-width: 0; }
+.auth-invitation-preview span { display: inline-block; padding: 3px 7px; border-radius: 99px; background: #dff4e9; color: #347e60; font-size: 9px; font-weight: 700; }
+.auth-invitation-preview:not(.active) span { background: #f9dde3; color: #a95168; }
+.auth-invitation-preview strong, .auth-invitation-preview p { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.auth-invitation-preview strong { margin-top: 5px; color: var(--life-text-primary); font-size: 14px; }
+.auth-invitation-preview p { margin-top: 4px; color: var(--life-text-secondary); font-size: 10px; }
 
 .auth-loading { align-items: center; justify-content: center; text-align: center; }
 .auth-loading-mark { display: grid; place-items: center; width: 112px; height: 112px; margin-bottom: 22px; border-radius: 38px; background: linear-gradient(145deg, rgba(219,213,255,.96), rgba(255,230,239,.96)); box-shadow: var(--life-shadow-float); }
