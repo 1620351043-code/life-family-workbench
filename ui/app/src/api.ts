@@ -172,7 +172,7 @@ export type FinanceReconciliationResponse = { batch_id: string; candidates: Fina
 export type FinanceImportErrorRow = { row_number: number; status: string; error_codes: string[]; normalized_payload: Record<string, unknown> };
 
 export class ApiRequestError extends Error {
-  constructor(message: string, readonly status: number, readonly code?: string) {
+  constructor(message: string, readonly status: number, readonly code?: string, readonly retryAfterSeconds?: number) {
     super(message);
     this.name = "ApiRequestError";
   }
@@ -188,10 +188,15 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
     ...init,
     headers,
+    credentials: init?.credentials ?? "same-origin",
   });
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
-    throw new ApiRequestError(body.message ?? `请求失败（${response.status}）`, response.status, body.code);
+    const retryAfterHeader = Number(response.headers.get("retry-after"));
+    const retryAfterSeconds = Number.isFinite(body.retry_after_seconds)
+      ? Number(body.retry_after_seconds)
+      : Number.isFinite(retryAfterHeader) && retryAfterHeader > 0 ? retryAfterHeader : undefined;
+    throw new ApiRequestError(body.message ?? `请求失败（${response.status}）`, response.status, body.code, retryAfterSeconds);
   }
   return response.json() as Promise<T>;
 }
@@ -207,6 +212,9 @@ export const familyApi = {
 
 export const authApi = {
   getMe: () => request<AuthIdentity>("/api/me"),
+  login: (email: string, password: string) => request<AuthIdentity>("/api/auth/login", { method: "POST", body: JSON.stringify({ email, password }) }),
+  register: (email: string, password: string, householdName: string) => request<AuthIdentity>("/api/auth/register", { method: "POST", body: JSON.stringify({ email, password, household_name: householdName }) }),
+  logout: () => request<{ ok: boolean }>("/api/auth/logout", { method: "POST" }),
 };
 
 export const financeApi = {

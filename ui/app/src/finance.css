@@ -50,8 +50,8 @@
 .asset-overview-trend svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
 .asset-overview-trend-label { position: absolute; right: 4px; bottom: 12px; z-index: 1; color: var(--life-text-secondary); font-size: var(--life-text-compact); font-weight: 650; }
 .asset-overview-trend-points { position: absolute; inset: 0; }
-.asset-overview-trend-point { position: absolute; width: 30px; height: 30px; margin: -15px 0 0 -15px; border: 0; border-radius: 50%; background: transparent; transform: translateZ(0); }
-.asset-overview-trend-point::before { content: ""; display: block; width: 11px; height: 11px; margin: 9px; border: 2px solid rgba(255,255,255,.96); border-radius: 50%; background: #7a6be7; box-shadow: 0 3px 8px rgba(66,55,134,.18); transition: transform var(--life-motion-fast) var(--life-ease); }
+.asset-overview-trend-point { position: absolute; display: grid; place-items: center; width: 44px; height: 44px; margin: -22px 0 0 -22px; border: 0; border-radius: 50%; background: transparent; transform: translateZ(0); }
+.asset-overview-trend-point::before { content: ""; display: block; width: 11px; height: 11px; border: 2px solid rgba(255,255,255,.96); border-radius: 50%; background: #7a6be7; box-shadow: 0 3px 8px rgba(66,55,134,.18); transition: transform var(--life-motion-fast) var(--life-ease); }
 .asset-overview-trend-point:last-child::before { background: #3eb391; }
 .asset-overview-trend-point:hover::before, .asset-overview-trend-point:focus-visible::before { transform: scale(1.22); }
 .asset-overview-trend-empty { display: grid; place-items: center; min-height: 78px; margin: 4px -4px 0; color: var(--life-text-tertiary); font-size: var(--life-text-compact); }

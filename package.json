@@ -19,6 +19,7 @@
     "web:build": "vite build --config ui/app/vite.config.ts",
     "web:typecheck": "tsc -p ui/app/tsconfig.json --noEmit",
     "web:food-smoke": "node scripts/food_vertical_slice_smoke.mjs",
+    "web:auth-e2e": "node scripts/auth_mobile_e2e.mjs",
     "web:visual-regression": "node scripts/mobile_visual_regression.mjs",
     "web:screenshot-catalog": "node scripts/ui_screenshot_catalog.mjs"
   },

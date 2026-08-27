@@ -1,11 +1,13 @@
-import { StrictMode, useEffect, useMemo, useRef, useState } from "react";
+import { StrictMode, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { familyApi, type TopicAiSummary, type TopicCard, type TopicDetail } from "./api";
+import { ApiRequestError, authApi, familyApi, type AuthIdentity, type TopicAiSummary, type TopicCard, type TopicDetail } from "./api";
 import { FinancePage } from "./components/FinancePage";
 import { FoodPage } from "./components/FoodPage";
 import { BunnyMark } from "./components/BunnyMark";
+import { AuthLoading, AuthPage } from "./components/AuthPage";
 import "./styles.css";
 import "./design-system.css";
+import "./auth.css";
 import "./finance.css";
 import "./food.css";
 
@@ -19,6 +21,9 @@ const navItems: Array<{ id: Route; label: string; icon: string }> = [
 ];
 
 function App() {
+  const [identity, setIdentity] = useState<AuthIdentity | null>(null);
+  const [sessionStatus, setSessionStatus] = useState<"checking" | "anonymous" | "authenticated">("checking");
+  const [sessionMessage, setSessionMessage] = useState<string | null>(null);
   const [route, setRoute] = useState<Route>("space");
   const [topics, setTopics] = useState<TopicCard[]>([]);
   const [selectedTopic, setSelectedTopic] = useState<TopicDetail | null>(null);
@@ -29,6 +34,20 @@ function App() {
   const [aiSummary, setAiSummary] = useState<TopicAiSummary | null>(null);
   const [commentSending, setCommentSending] = useState(false);
   const topicRequestVersion = useRef(0);
+
+  const checkSession = async () => {
+    setSessionStatus("checking");
+    setSessionMessage(null);
+    try {
+      const current = await authApi.getMe();
+      setIdentity(current);
+      setSessionStatus("authenticated");
+    } catch (reason) {
+      setIdentity(null);
+      setSessionStatus("anonymous");
+      if (!(reason instanceof ApiRequestError && reason.status === 401)) setSessionMessage(reason instanceof Error ? reason.message : "暂时无法确认登录状态");
+    }
+  };
 
   const refreshTopics = async () => {
     setLoading(true);
@@ -44,7 +63,15 @@ function App() {
     }
   };
 
-  useEffect(() => { void refreshTopics(); }, []);
+  useEffect(() => { void checkSession(); }, []);
+  useEffect(() => {
+    if (!identity) {
+      setTopics([]);
+      setSelectedTopic(null);
+      return;
+    }
+    void refreshTopics();
+  }, [identity?.household.id]);
 
   const openTopic = async (topic: TopicCard) => {
     const requestId = ++topicRequestVersion.current;
@@ -98,13 +125,32 @@ function App() {
     } catch (reason) { setError(reason instanceof Error ? reason.message : "小兔子行动未完成"); }
   };
 
+  const logout = async () => {
+    setError(null);
+    try {
+      await authApi.logout();
+      setIdentity(null);
+      setSessionStatus("anonymous");
+      setRoute("space");
+      setTopics([]);
+      setSelectedTopic(null);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "退出登录失败");
+    }
+  };
+
+  if (sessionStatus === "checking") return <AuthLoading />;
+  if (sessionStatus === "anonymous" || !identity) {
+    return <AuthPage serviceMessage={sessionMessage} onLogin={authApi.login} onRegister={authApi.register} onAuthenticated={(current) => { setIdentity(current); setSessionMessage(null); setSessionStatus("authenticated"); }} onRetrySession={checkSession} />;
+  }
+
   return (
     <div className="app-shell">
       <div className="ambient ambient-a" />
       <div className="ambient ambient-b" />
       <main className="phone-frame">
         <header className="topbar">
-          <div className="brand-mark"><span className="bunny-mark"><BunnyMark size={36} /></span><span><strong>Life</strong><small>家庭生活工作台</small></span></div>
+          <div className="brand-mark"><span className="bunny-mark"><BunnyMark size={36} /></span><span><strong>Life</strong><small>{identity.household.name}</small></span></div>
           {route !== "finance" && <button type="button" className="bunny-button" aria-label="打开小兔子 AI" onClick={() => selectedTopic ? void generateAiSummary() : setError("先选择一个家庭主题，小兔子才能帮你整理")}><BunnyMark size={24} /><span>小兔子</span></button>}
         </header>
         <div className="content-scroll">
@@ -112,7 +158,7 @@ function App() {
           {route === "space" && <SpacePage topics={topics} selectedTopic={selectedTopic} loading={loading} onOpenTopic={openTopic} onPublish={() => setComposerOpen(true)} onAiSummary={() => void generateAiSummary()} onAddComment={addComment} commentSending={commentSending} onBack={() => setSelectedTopic(null)} />}
           {route === "food" && <FoodPage />}
           {route === "finance" && <FinancePage />}
-          {route === "more" && <PlaceholderPage title="更多" subtitle="家庭权限与 AI 设置" icon="•••" text="这里将承载家庭成员、儿童财务授权、AI Provider、记忆文件和安全设置。" />}
+          {route === "more" && <MorePage identity={identity} onLogout={logout} />}
         </div>
         <nav className="bottom-nav" aria-label="主导航">
           {navItems.map((item) => <button type="button" key={item.id} className={route === item.id ? "active" : ""} aria-current={route === item.id ? "page" : undefined} onClick={() => { setRoute(item.id); setSelectedTopic(null); setError(null); }}><span aria-hidden="true">{item.icon}</span>{item.label}</button>)}
@@ -160,8 +206,9 @@ function AiSheet(props: { summary: TopicAiSummary; onClose: () => void; onDecisi
   return <div className="modal-backdrop" onMouseDown={(event) => event.currentTarget === event.target && props.onClose()}><section className="sheet ai-sheet"><div className="sheet-handle" /><div className="sheet-title"><div><span className="eyebrow"><span className="bunny-mini"><BunnyMark size={24} /></span> 小兔子整理</span><h2>这场讨论的摘要</h2></div><button type="button" aria-label="关闭 AI 摘要" onClick={props.onClose}>×</button></div><div className="source-pill">来源于当前主题和 {Math.max(0, props.summary.insight.source_refs.length - 1)} 条回应 · {props.summary.insight.provider}</div><p className="ai-summary">{props.summary.insight.summary}</p><div className="key-points">{props.summary.insight.key_points.map((point) => <div key={point}><span aria-hidden="true">✦</span>{point}</div>)}</div><div className="proposal-card"><div><strong>建议写回主题讨论</strong><p>将整理结果作为一条评论发布，发布前需要你的确认。</p></div><span className={`status ${props.summary.action_proposal.status}`}>{props.summary.action_proposal.status === "proposed" ? "待确认" : props.summary.action_proposal.status === "confirmed" ? "已发布" : "已拒绝"}</span></div>{canDecide && <div className="sheet-actions"><button type="button" className="secondary-button" onClick={() => props.onDecision("reject")}>暂不发布</button><button type="button" className="primary-button" onClick={() => props.onDecision("confirm")}>确认发布</button></div>}</section></div>;
 }
 
-function PlaceholderPage(props: { title: string; subtitle: string; icon: string; text: string }) {
-  return <section className="placeholder-page"><div className="placeholder-icon">{props.icon}</div><span className="eyebrow">{props.subtitle}</span><h1>{props.title}</h1><p>{props.text}</p><div className="placeholder-note"><span><BunnyMark size={24} /></span><div><strong>正在按产品基线接入</strong><small>这里不会使用未经验证的演示账本或菜谱数据。</small></div></div></section>;
+function MorePage(props: { identity: AuthIdentity; onLogout: () => Promise<void> }) {
+  const roleLabel = props.identity.household.role === "owner" ? "家庭所有者" : props.identity.household.role === "adult" ? "成人成员" : props.identity.household.role === "child" ? "儿童成员" : "访客成员";
+  return <section className="more-page"><div className="section-heading"><div><span className="eyebrow">账号与家庭</span><h1>更多</h1></div></div><article className="identity-card"><div className="identity-avatar">{props.identity.user.email.slice(0, 1).toUpperCase()}</div><div><strong>{props.identity.household.name}</strong><p>{props.identity.user.email}</p><span>{roleLabel}</span></div></article><div className="security-summary"><div><span aria-hidden="true">⌂</span><p><strong>唯一家庭归属</strong><small>当前账号不能切换或加入第二个家庭</small></p></div><div><span aria-hidden="true">◉</span><p><strong>家庭数据隔离</strong><small>账本、讨论、AI 连接和记忆独立保存</small></p></div></div><button type="button" className="logout-button" onClick={() => void props.onLogout()}>退出登录</button></section>;
 }
 
 function formatTime(value: string) { const date = new Date(value); return Number.isNaN(date.valueOf()) ? value : date.toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" }); }
