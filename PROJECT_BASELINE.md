@@ -20,12 +20,12 @@
 
 | 领域 | 当前事实 | 结论 |
 |---|---|---|
-| 后端 | Fastify + TypeScript；财务概览、服务端下钻、统一账本、手动记账、账户/分类/预算、实物资产、成员权限、审计、导入状态机、导出队列、原始数据清理、家庭 AI 配置和 HttpOnly 身份会话均已进入实现与测试 | 原生 PostgreSQL、COS、外部 AI 和腾讯云部署尚未 live smoke |
-| 数据库 | PostgreSQL 迁移已覆盖租户、财务导入、统一账本、预算、实物资产、权限、导出、AI 连接/记忆、会话和 RLS；0001–0010 已纳入迁移 runner | 当前自动化使用 PGlite 兼容验证，尚未在目标原生 PostgreSQL 实例执行 |
-| API | OpenAPI 已声明 49 个路径、68 个 schema；财务核心、认证登录/注册/退出、`/api/me` 和导出/AI 配置已接入 | 以运行时注册路由和测试为验收标准，契约声明不等于目标环境 live 通过 |
-| 前端 | `ui/app/` 已有 React/TypeScript 移动端骨架；登录、注册创建唯一家庭、会话恢复、退出、家庭空间、吃什么 UI、财务首页、记账、账户/预算、资产、权限、导入/关联审核和 AI 入口已按切片接入 | 密码重置、邀请和家庭成员管理仍需按后续切片完成；所有页面继续复用统一设计系统 |
+| 后端 | Fastify + TypeScript；财务核心、家庭空间、AI 配置、HttpOnly 会话和密码重置均已进入实现与测试 | 原生 PostgreSQL、COS、外部 AI、真实邮件交付和腾讯云部署尚未 live smoke |
+| 数据库 | PostgreSQL 迁移已覆盖租户、财务、AI 连接/记忆、会话、密码重置令牌和 RLS；0001–0011 已纳入迁移 runner | 当前自动化使用 PGlite 兼容验证，尚未在目标原生 PostgreSQL 实例执行 |
+| API | OpenAPI 已声明 51 个路径、72 个 schema；财务核心、认证登录/注册/密码重置/退出、`/api/me` 和导出/AI 配置已接入 | 以运行时注册路由和测试为验收标准，契约声明不等于目标环境 live 通过 |
+| 前端 | `ui/app/` 已有 React/TypeScript 移动端骨架；登录、注册创建唯一家庭、密码重置、会话恢复、退出、家庭空间、吃什么 UI、财务与 AI 入口已按切片接入 | 邀请和家庭成员管理仍需按后续切片完成；所有页面继续复用统一设计系统 |
 | 设计系统 | 总体 UI 设计系统已收口为淡粉淡紫 + iOS 层级 + Liquid Glass 功能层，并补齐自适应容器、多预算重排、容器感知字号和长内容规则 | 页面垂直切片只能复用统一令牌、Adaptive Layout 原语和组件行为 |
-| 测试 | API 14/14、类型检查、OpenAPI 校验、迁移烟测、真实四份账单回放、430/390/320 身份 E2E 和财务视觉回归均可运行 | 身份 E2E 当前为 PGlite + SqlAuthStore + HttpOnly Cookie；原生隔离 PostgreSQL、HTTPS、COS/AI live smoke 和服务器部署仍是发布闸门 |
+| 测试 | API 17/17、类型检查、OpenAPI 校验、177 条迁移烟测、真实四份账单回放、430/390/320 身份/密码重置 E2E 和财务视觉回归均可运行 | 身份 E2E 当前为 PGlite + SqlAuthStore + HttpOnly Cookie；原生 PostgreSQL、HTTPS、真实邮件、COS/AI live smoke 和服务器部署仍是发布闸门 |
 | 发布 | `RELEASE.md` 已定义 SemVer、staging RC Tag、production 稳定 Tag、Tag 校验和 commit 追溯；`release:check` 已接入 CI Tag 触发；`deploy/ROLLBACK.md` 已建立前端/API/迁移/worker 回滚边界 | A-005 已通过 PR #1 squash 合并到 `main`；A-006 清单已建立；当前未创建正式发布 Tag，真实回滚演练待 staging |
 | CI | GitHub Actions `quality-gate` 已在 `e5a598e` 落地，并在远端提交 `c5f3a07` 的运行 `32973176792` 中全绿 | CI 已真实触发并通过；`quality-gate` 已设置为 `main` 的 required check |
 | 版本控制 | 已建立首次基线提交 `8bd7793`；分支、提交、审查、合并规范已在 `18051e0` 落地；公开远端已绑定并推送 `main` | Squash merge、关闭普通 Merge/Rebase、合并后删除分支已配置；`main` Branch Protection 已启用并要求 `quality-gate` |
@@ -34,7 +34,7 @@
 
 1. COS 适配器、私有对象路径、签名 URL 和清理 worker 已实现，但尚未使用腾讯云真实凭据执行 live smoke。
 2. 财务核心垂直切片已通过 PGlite 和移动端验证；目标原生 PostgreSQL、连接池和部署参数仍未复验。
-3. 正式 HttpOnly 会话、移动端注册/登录/退出和 `/api/me` 已接入并通过本地真实浏览器回归；目标环境仍需执行原生 PostgreSQL、HTTPS Secure Cookie、共享限流和跨家庭回归。
+3. 正式 HttpOnly 会话、移动端注册/登录/密码重置/退出和 `/api/me` 已接入并通过本地真实浏览器回归；目标环境仍需执行原生 PostgreSQL、HTTPS Secure Cookie、真实邮件交付、共享限流和跨家庭回归。
 4. 生产 AI Provider、家庭密钥引用和 AI 记忆清理已实现 fail-closed 契约，但外部 Endpoint、限流、超时和真实错误回归尚未执行。
 
 ## 4. 本轮实施顺序

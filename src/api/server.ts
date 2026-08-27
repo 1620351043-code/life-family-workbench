@@ -12,6 +12,7 @@ import { LocalFinanceImportParser, type FinanceImportParser } from "./finance-im
 import { runFinanceExportJob } from "./finance-export-worker.js";
 import { SqlAuthStore, type AuthSession, type AuthStore } from "./auth.js";
 import { InMemoryAuthAttemptLimiter, type AuthAttemptLimiter, type AuthRateLimitInput } from "./auth-rate-limit.js";
+import { createPasswordResetDeliveryFromEnv, type PasswordResetDelivery } from "./password-reset-delivery.js";
 
 const sourceTypes = ["bank", "alipay", "wechat", "bookkeeping_app", "other"] as const;
 const overviewQuerySchema = z.object({ start: z.string().date(), end: z.string().date(), granularity: z.enum(["day", "week", "month", "quarter"]).default("day") });
@@ -48,11 +49,16 @@ const registerSchema = z.object({
   password: z.string().min(8, "密码至少需要 8 位").max(128, "密码不能超过 128 位"),
   household_name: z.string().trim().min(1, "请输入家庭名称").max(80),
 });
+const passwordResetRequestSchema = z.object({ email: z.string().email().max(320) });
+const passwordResetConfirmSchema = z.object({
+  token: z.string().min(32, "密码重置链接无效").max(512, "密码重置链接无效"),
+  password: z.string().min(8, "密码至少需要 8 位").max(128, "密码不能超过 128 位"),
+});
 
 export type FinanceRepositoryFactory = (scope: FinanceScope) => FinanceRepository;
 export type FamilyRepositoryFactory = (scope: FinanceScope) => FamilyRepository;
 export type ScopeResolver = (request: FastifyRequest) => FinanceScope | null | Promise<FinanceScope | null>;
-export type ServerOptions = { financeFactory?: FinanceRepositoryFactory; familyFactory?: FamilyRepositoryFactory; resolveScope?: ScopeResolver; authStore?: AuthStore; authAttemptLimiter?: AuthAttemptLimiter; importObjectStore?: ImportObjectStore; importParser?: FinanceImportParser; exportRunner?: (scope: FinanceScope, jobId: string) => Promise<void> };
+export type ServerOptions = { financeFactory?: FinanceRepositoryFactory; familyFactory?: FamilyRepositoryFactory; resolveScope?: ScopeResolver; authStore?: AuthStore; authAttemptLimiter?: AuthAttemptLimiter; passwordResetDelivery?: PasswordResetDelivery; importObjectStore?: ImportObjectStore; importParser?: FinanceImportParser; exportRunner?: (scope: FinanceScope, jobId: string) => Promise<void> };
 
 const requestScopes = new WeakMap<object, FinanceScope | null>();
 const requestSessions = new WeakMap<object, AuthSession>();
@@ -120,12 +126,13 @@ function requireFamilyFactory(reply: { code(code: number): { send(body: unknown)
 export function buildServer(options: ServerOptions = {}): FastifyInstance {
   const authStore = options.authStore;
   const authAttemptLimiter = options.authAttemptLimiter ?? new InMemoryAuthAttemptLimiter();
+  const passwordResetDelivery = options.passwordResetDelivery;
   const resolveScope = options.resolveScope ?? defaultScopeResolver;
   if (process.env.NODE_ENV === "production" && !authStore && !options.resolveScope) throw new Error("生产环境必须配置正式会话 resolver 或 authStore，禁止使用开发 scope");
   const importObjectStore: ImportObjectStore = options.importObjectStore ?? (process.env.NODE_ENV === "production" ? createProductionCosObjectStoreFromEnv() : new LocalImportObjectStore());
   if (process.env.NODE_ENV === "production" && !importObjectStore.production) throw new Error("生产环境必须使用腾讯云 COS 私有桶适配器，禁止回退到本地账单存储");
   const importParser = options.importParser ?? new LocalFinanceImportParser(importObjectStore);
-  const app = Fastify({ logger: false, bodyLimit: 50 * 1024 * 1024 });
+  const app = Fastify({ logger: process.env.NODE_ENV === "production", bodyLimit: 50 * 1024 * 1024 });
   app.addContentTypeParser("application/octet-stream", { parseAs: "buffer" }, (_request, body, done) => done(null, body));
   app.addHook("preHandler", async (request) => {
     if (!request.url.startsWith("/api/")) return;
@@ -196,6 +203,47 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     authAttemptLimiter.recordSuccess(limitInput);
     setSessionCookie(reply, result.token);
     return reply.code(201).send(result.session.identity);
+  });
+
+  app.post("/api/auth/password-reset/request", async (request, reply) => {
+    if (!authStore || !passwordResetDelivery) return reply.code(503).send({ code: "PASSWORD_RESET_NOT_CONFIGURED", message: "密码重置服务尚未配置", trace_id: request.id });
+    const input = passwordResetRequestSchema.parse(request.body);
+    const limitInput: AuthRateLimitInput = { operation: "password_reset_request", email: input.email, ipAddress: request.ip };
+    const currentLimit = authAttemptLimiter.check(limitInput);
+    if (!currentLimit.allowed) {
+      reply.header("retry-after", String(currentLimit.retryAfterSeconds));
+      return reply.code(429).send({ code: "AUTH_RATE_LIMITED", message: "请求次数过多，请稍后再试", retry_after_seconds: currentLimit.retryAfterSeconds, trace_id: request.id });
+    }
+    const reset = await authStore.createPasswordReset(input.email, { userAgent: headerValue(request, "user-agent"), ipAddress: request.ip });
+    authAttemptLimiter.recordFailure(limitInput);
+    if (reset) {
+      try {
+        await passwordResetDelivery.sendPasswordReset(reset);
+      } catch (error) {
+        request.log.error({ error }, "password reset delivery failed");
+      }
+    }
+    return reply.code(202).send({ ok: true, message: "如果该邮箱已注册，重置链接将很快送达" });
+  });
+
+  app.post("/api/auth/password-reset/confirm", async (request, reply) => {
+    if (!authStore) return reply.code(503).send({ code: "AUTH_NOT_CONFIGURED", message: "身份服务尚未配置", trace_id: request.id });
+    const input = passwordResetConfirmSchema.parse(request.body);
+    const limitInput: AuthRateLimitInput = { operation: "password_reset_confirm", email: input.token, ipAddress: request.ip };
+    const currentLimit = authAttemptLimiter.check(limitInput);
+    if (!currentLimit.allowed) {
+      reply.header("retry-after", String(currentLimit.retryAfterSeconds));
+      return reply.code(429).send({ code: "AUTH_RATE_LIMITED", message: "尝试次数过多，请稍后再试", retry_after_seconds: currentLimit.retryAfterSeconds, trace_id: request.id });
+    }
+    const applied = await authStore.applyPasswordReset(input.token, input.password);
+    if (!applied) {
+      const nextLimit = authAttemptLimiter.recordFailure(limitInput);
+      if (!nextLimit.allowed) reply.header("retry-after", String(nextLimit.retryAfterSeconds));
+      return reply.code(nextLimit.allowed ? 400 : 429).send({ code: nextLimit.allowed ? "PASSWORD_RESET_INVALID" : "AUTH_RATE_LIMITED", message: nextLimit.allowed ? "重置链接无效、已使用或已过期" : "尝试次数过多，请稍后再试", ...(nextLimit.allowed ? {} : { retry_after_seconds: nextLimit.retryAfterSeconds }), trace_id: request.id });
+    }
+    authAttemptLimiter.recordSuccess(limitInput);
+    setSessionCookie(reply, null);
+    return { ok: true, message: "密码已更新，请重新登录" };
   });
 
   app.post("/api/auth/logout", async (request, reply) => {
@@ -738,10 +786,12 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const pool = databaseUrl ? new Pool({ connectionString: databaseUrl }) : null;
   const importObjectStore: ImportObjectStore = process.env.NODE_ENV === "production" ? createProductionCosObjectStoreFromEnv() : new LocalImportObjectStore();
   const authStore = pool ? new SqlAuthStore(pool as unknown as DbPool) : undefined;
+  const passwordResetDelivery = createPasswordResetDeliveryFromEnv();
   const app = buildServer({
     financeFactory: pool ? ((scope) => new SqlFinanceRepository(pool as unknown as DbPool, scope, importObjectStore)) : undefined,
     familyFactory: pool ? ((scope) => new SqlFamilyRepository(pool as unknown as DbPool, scope)) : undefined,
     authStore,
+    passwordResetDelivery,
     importObjectStore,
     exportRunner: pool ? ((scope, jobId) => runFinanceExportJob(pool as unknown as DbPool, scope, importObjectStore, jobId)) : undefined,
   });

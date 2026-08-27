@@ -17,6 +17,7 @@ const files = [
   "0008_finance_ai.sql",
   "0009_finance_production_hardening.sql",
   "0010_auth_sessions.sql",
+  "0011_password_reset.sql",
 ];
 
 const pool = new Pool({ connectionString: databaseUrl, max: 1 });

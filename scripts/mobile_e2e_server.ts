@@ -6,6 +6,7 @@ import { SqlFamilyRepository } from "../src/api/family-repository.js";
 import { MemoryImportObjectStore } from "../src/api/import-storage.js";
 import { SqlAuthStore, hashPassword } from "../src/api/auth.js";
 import type { DbPool } from "../src/api/database.js";
+import type { PasswordResetDelivery, PasswordResetDeliveryMessage } from "../src/api/password-reset-delivery.js";
 
 const householdId = "00000000-0000-0000-0000-0000000000a1";
 const userId = "10000000-0000-0000-0000-0000000000a1";
@@ -16,6 +17,12 @@ const budgetPeriodId = "60000000-0000-0000-0000-0000000000a1";
 const apiPort = Number(process.env.MOBILE_API_PORT ?? 3100);
 export const MOBILE_E2E_EMAIL = "mobile-e2e@example.invalid";
 export const MOBILE_E2E_PASSWORD = "mobile-e2e-password";
+
+class MobileE2ePasswordResetDelivery implements PasswordResetDelivery {
+  private readonly messages = new Map<string, PasswordResetDeliveryMessage>();
+  async sendPasswordReset(message: PasswordResetDeliveryMessage) { this.messages.set(message.email.toLowerCase(), message); }
+  get(email: string) { return this.messages.get(email.trim().toLowerCase()) ?? null; }
+}
 
 function splitSql(input: string) {
   const statements: string[] = [];
@@ -47,7 +54,7 @@ function splitSql(input: string) {
 }
 
 async function migrate(db: PGlite) {
-  for (const file of ["0001_life_core_finance.sql", "0002_finance_import_state.sql", "0003_life_app_privileges.sql", "0004_family_space_ai.sql", "0005_finance_ledger_foundation.sql", "0006_finance_management_foundation.sql", "0007_finance_permissions.sql", "0008_finance_ai.sql", "0009_finance_production_hardening.sql", "0010_auth_sessions.sql"]) {
+  for (const file of ["0001_life_core_finance.sql", "0002_finance_import_state.sql", "0003_life_app_privileges.sql", "0004_family_space_ai.sql", "0005_finance_ledger_foundation.sql", "0006_finance_management_foundation.sql", "0007_finance_permissions.sql", "0008_finance_ai.sql", "0009_finance_production_hardening.sql", "0010_auth_sessions.sql", "0011_password_reset.sql"]) {
     let sql = await readFile(`db/migrations/${file}`, "utf8");
     sql = sql.replace("CREATE EXTENSION IF NOT EXISTS pgcrypto;", "-- pgcrypto is not bundled in PGlite").replaceAll("DEFAULT gen_random_uuid()", "");
     for (const statement of splitSql(sql)) await db.query(statement);
@@ -70,7 +77,13 @@ await db.query("INSERT INTO asset_event (id, household_id, asset_id, occurred_at
 const pool: DbPool = { connect: async () => { await db.query("SET ROLE life_app"); return { query: db.query.bind(db), release: () => undefined }; } };
 const importStore = new MemoryImportObjectStore();
 const authStore = new SqlAuthStore(pool);
-const app = buildServer({ authStore, financeFactory: (requestScope) => new SqlFinanceRepository(pool, requestScope, importStore), familyFactory: (requestScope) => new SqlFamilyRepository(pool, requestScope), importObjectStore: importStore });
+const passwordResetDelivery = new MobileE2ePasswordResetDelivery();
+const app = buildServer({ authStore, passwordResetDelivery, financeFactory: (requestScope) => new SqlFinanceRepository(pool, requestScope, importStore), familyFactory: (requestScope) => new SqlFamilyRepository(pool, requestScope), importObjectStore: importStore });
+app.get<{ Querystring: { email?: string } }>("/__e2e/password-reset-token", async (request, reply) => {
+  const message = request.query.email ? passwordResetDelivery.get(request.query.email) : null;
+  if (!message) return reply.code(404).send({ code: "RESET_TOKEN_NOT_FOUND" });
+  return { token: message.token, expires_at: message.expiresAt };
+});
 await app.listen({ host: "127.0.0.1", port: apiPort });
 console.log(`mobile-e2e-api listening on ${apiPort}`);
 

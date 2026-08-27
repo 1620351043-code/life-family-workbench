@@ -3,6 +3,7 @@ import type { DbPool, FinanceScope } from "./database.js";
 
 const PASSWORD_PREFIX = "scrypt-v1";
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 30;
+const PASSWORD_RESET_TTL_SECONDS = 30 * 60;
 
 function deriveKey(password: string, salt: Buffer, length: number): Promise<Buffer> {
   return new Promise((resolve, reject) => {
@@ -25,6 +26,8 @@ export type AuthStore = {
   register(email: string, password: string, householdName: string, metadata?: { userAgent?: string | null; ipAddress?: string | null }): Promise<{ token: string; session: AuthSession } | null>;
   resolveSession(token: string): Promise<AuthSession | null>;
   revokeSession(token: string): Promise<void>;
+  createPasswordReset(email: string, metadata?: { userAgent?: string | null; ipAddress?: string | null }): Promise<{ email: string; token: string; expiresAt: string } | null>;
+  applyPasswordReset(token: string, password: string): Promise<boolean>;
 };
 
 function hashToken(token: string) {
@@ -159,6 +162,47 @@ export class SqlAuthStore implements AuthStore {
     const client = await this.pool.connect();
     try {
       await client.query("UPDATE user_session SET revoked_at = now() WHERE token_hash = $1 AND revoked_at IS NULL", [hashToken(token)]);
+    } finally {
+      client.release?.();
+    }
+  }
+
+  async createPasswordReset(email: string, metadata: { userAgent?: string | null; ipAddress?: string | null } = {}) {
+    const client = await this.pool.connect();
+    try {
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        const token = randomBytes(32).toString("base64url");
+        const expiresAt = new Date(Date.now() + PASSWORD_RESET_TTL_SECONDS * 1000).toISOString();
+        try {
+          const result = await client.query<{ email: string }>(
+            "SELECT email FROM life_auth_create_password_reset($1, $2, $3, $4::timestamptz, $5, $6::inet)",
+            [randomUUID(), email.trim(), hashToken(token), expiresAt, metadata.userAgent ?? null, metadata.ipAddress ?? null],
+          );
+          return result.rows[0] ? { email: result.rows[0].email, token, expiresAt } : null;
+        } catch (error) {
+          const retryableConflict = typeof error === "object" && error && "code" in error && (error as { code?: string }).code === "23505";
+          if (!retryableConflict || attempt > 0) throw error;
+        }
+      }
+      return null;
+    } finally {
+      client.release?.();
+    }
+  }
+
+  async applyPasswordReset(token: string, password: string): Promise<boolean> {
+    if (!token || token.length > 512) return false;
+    const tokenHash = hashToken(token);
+    const client = await this.pool.connect();
+    try {
+      const active = await client.query("SELECT 1 FROM password_reset_token WHERE token_hash = $1 AND used_at IS NULL AND expires_at > now()", [tokenHash]);
+      if (!active.rows[0]) return false;
+      const passwordHash = await hashPassword(password);
+      const result = await client.query<{ applied: boolean }>(
+        "SELECT life_auth_apply_password_reset($1, $2) AS applied",
+        [tokenHash, passwordHash],
+      );
+      return result.rows[0]?.applied === true;
     } finally {
       client.release?.();
     }

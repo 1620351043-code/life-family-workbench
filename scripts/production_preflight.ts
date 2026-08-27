@@ -10,6 +10,10 @@ function required(name: string) {
 
 if (process.env.NODE_ENV !== "production") throw new Error("生产 preflight 必须设置 NODE_ENV=production");
 const databaseUrl = required("DATABASE_URL");
+const publicAppUrl = required("LIFE_PUBLIC_APP_URL");
+const passwordResetDeliveryEndpoint = required("LIFE_PASSWORD_RESET_DELIVERY_ENDPOINT");
+if (!publicAppUrl.startsWith("https://")) throw new Error("生产 LIFE_PUBLIC_APP_URL 必须使用 HTTPS");
+if (!passwordResetDeliveryEndpoint.startsWith("https://")) throw new Error("生产 LIFE_PASSWORD_RESET_DELIVERY_ENDPOINT 必须使用 HTTPS");
 required("LIFE_COS_BUCKET");
 required("LIFE_COS_REGION");
 required("LIFE_COS_SECRET_ID");
@@ -26,7 +30,7 @@ try {
   const dbRole = role.rows[0];
   if (!dbRole || dbRole.rolsuper || dbRole.rolbypassrls) throw new Error("生产应用连接必须使用 NOSUPERUSER、NOBYPASSRLS 角色");
 
-  const requiredTables = ["household", "app_user", "household_member", "user_session", "finance_export_job", "import_batch", "ai_memory_artifact"];
+  const requiredTables = ["household", "app_user", "household_member", "user_session", "password_reset_token", "finance_export_job", "import_batch", "ai_memory_artifact"];
   const tableRows = await pool.query<{ relname: string; relrowsecurity: boolean; relforcerowsecurity: boolean }>(
     `SELECT c.relname, c.relrowsecurity, c.relforcerowsecurity
        FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
@@ -41,6 +45,8 @@ try {
   }
   const functionCheck = await pool.query("SELECT to_regprocedure('life_auth_lookup_user(text)') AS function_name");
   if (!functionCheck.rows[0]?.function_name) throw new Error("生产数据库缺少 life_auth_lookup_user(text)");
+  const passwordResetFunctionCheck = await pool.query("SELECT to_regprocedure('life_auth_apply_password_reset(text,text)') AS function_name");
+  if (!passwordResetFunctionCheck.rows[0]?.function_name) throw new Error("生产数据库缺少 life_auth_apply_password_reset(text,text)");
 
   const store = createProductionCosObjectStoreFromEnv();
   const key = `production-smoke/${randomUUID()}.txt`;

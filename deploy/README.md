@@ -26,7 +26,7 @@ set +a
 npm run production:preflight
 ```
 
-该命令会检查应用数据库角色、核心表、`FORCE ROW LEVEL SECURITY`、认证函数，并在 COS 私有桶中执行一次上传、读取、HTTPS 签名 URL 和删除 smoke。`LIFE_COS_LIVE_SMOKE` 必须显式设为 `true`。
+该命令会检查应用数据库角色、核心表、`FORCE ROW LEVEL SECURITY`、认证与密码重置函数、公开 App URL 和密码重置交付 Endpoint 配置，并在 COS 私有桶中执行一次上传、读取、HTTPS 签名 URL 和删除 smoke。`LIFE_COS_LIVE_SMOKE` 必须显式设为 `true`。真实邮件送达仍须另做一次目标环境验收。
 
 ## 3. 服务与 worker
 
@@ -42,4 +42,4 @@ npm run finance:retention-worker
 
 ## 4. 发布验收
 
-必须实际完成：登录 → `/api/me` → 财务首页 → 新增记账 → 导入账单 → 表头预览 → 关联审核 → 导出下载 → 退出；再验证跨家庭 Cookie、儿童权限、COS 对象路径、备份恢复和回滚。
+必须实际完成：注册 → 登录 → `/api/me` → 申请密码重置 → 邮件链接 → 更新密码 → 旧会话失效 → 新密码登录 → 财务首页 → 新增记账 → 导入账单 → 表头预览 → 关联审核 → 导出下载 → 退出；再验证跨家庭 Cookie、儿童权限、COS 对象路径、备份恢复和回滚。

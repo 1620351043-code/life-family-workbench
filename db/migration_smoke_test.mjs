@@ -67,6 +67,7 @@ const migrationFiles = [
   'migrations/0008_finance_ai.sql',
   'migrations/0009_finance_production_hardening.sql',
   'migrations/0010_auth_sessions.sql',
+  'migrations/0011_password_reset.sql',
 ];
 let statements = [];
 for (const file of migrationFiles) {
@@ -91,10 +92,10 @@ if (!process.exitCode) {
   const tables = await db.query(
     "SELECT count(*)::int AS count FROM pg_class WHERE relkind = 'r' AND relname IN ('app_user', 'household_member', 'financial_account', 'financial_source', 'import_batch', 'import_row', 'source_record', 'reconciliation_group', 'transaction_link', 'ledger_transaction', 'ledger_entry', 'category', 'budget', 'budget_period', 'physical_asset', 'asset_event', 'finance_drilldown_filter', 'financial_permission', 'family_topic', 'family_topic_comment', 'ai_memory_document', 'ai_insight', 'ai_action_proposal', 'ai_action_execution', 'finance_export_job', 'household_ai_connection', 'ai_memory_artifact')",
   );
-  const authTables = await db.query("SELECT count(*)::int AS count FROM pg_class WHERE relkind = 'r' AND relname = 'user_session'");
+  const authTables = await db.query("SELECT count(*)::int AS count FROM pg_class WHERE relkind = 'r' AND relname IN ('user_session', 'password_reset_token')");
   const policies = await db.query("SELECT count(*)::int AS count FROM pg_policies WHERE schemaname = 'public'");
   if (tables.rows[0].count !== 27) throw new Error('expected 27 protected tables, got ' + tables.rows[0].count);
-  if (authTables.rows[0].count !== 1) throw new Error('expected user_session table');
+  if (authTables.rows[0].count !== 2) throw new Error('expected user_session and password_reset_token tables');
   if (policies.rows[0].count !== 28) throw new Error('expected 28 RLS policies, got ' + policies.rows[0].count);
   console.log('migration smoke: PASS (' + statements.length + ' statements, 27 protected tables, 28 policies, app role grants)');
 }

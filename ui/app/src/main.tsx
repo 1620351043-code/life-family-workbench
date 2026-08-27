@@ -21,6 +21,7 @@ const navItems: Array<{ id: Route; label: string; icon: string }> = [
 ];
 
 function App() {
+  const [resetToken, setResetToken] = useState<string | null>(() => new URLSearchParams(window.location.search).get("reset_token"));
   const [identity, setIdentity] = useState<AuthIdentity | null>(null);
   const [sessionStatus, setSessionStatus] = useState<"checking" | "anonymous" | "authenticated">("checking");
   const [sessionMessage, setSessionMessage] = useState<string | null>(null);
@@ -34,6 +35,7 @@ function App() {
   const [aiSummary, setAiSummary] = useState<TopicAiSummary | null>(null);
   const [commentSending, setCommentSending] = useState(false);
   const topicRequestVersion = useRef(0);
+  const skipNextSessionCheck = useRef(false);
 
   const checkSession = async () => {
     setSessionStatus("checking");
@@ -63,7 +65,21 @@ function App() {
     }
   };
 
-  useEffect(() => { void checkSession(); }, []);
+  useEffect(() => {
+    if (resetToken) {
+      window.history.replaceState({}, "", window.location.pathname);
+      setIdentity(null);
+      setSessionStatus("anonymous");
+      return;
+    }
+    if (skipNextSessionCheck.current) {
+      skipNextSessionCheck.current = false;
+      setIdentity(null);
+      setSessionStatus("anonymous");
+      return;
+    }
+    void checkSession();
+  }, [resetToken]);
   useEffect(() => {
     if (!identity) {
       setTopics([]);
@@ -141,7 +157,7 @@ function App() {
 
   if (sessionStatus === "checking") return <AuthLoading />;
   if (sessionStatus === "anonymous" || !identity) {
-    return <AuthPage serviceMessage={sessionMessage} onLogin={authApi.login} onRegister={authApi.register} onAuthenticated={(current) => { setIdentity(current); setSessionMessage(null); setSessionStatus("authenticated"); }} onRetrySession={checkSession} />;
+    return <AuthPage serviceMessage={sessionMessage} resetToken={resetToken} onLogin={authApi.login} onRegister={authApi.register} onRequestPasswordReset={authApi.requestPasswordReset} onConfirmPasswordReset={authApi.confirmPasswordReset} onPasswordResetCompleted={() => { skipNextSessionCheck.current = true; window.history.replaceState({}, "", window.location.pathname); setIdentity(null); setSessionStatus("anonymous"); setResetToken(null); }} onAuthenticated={(current) => { setIdentity(current); setSessionMessage(null); setSessionStatus("authenticated"); }} onRetrySession={checkSession} />;
   }
 
   return (
