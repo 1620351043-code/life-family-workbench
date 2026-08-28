@@ -70,6 +70,8 @@ const sensitivePermissionSchema = z.object({
   enabled: z.boolean(),
   expected_version: z.number().int().min(0),
 });
+const deletionRequestSchema = z.object({ request_type: z.enum(["account", "household"]) });
+const deletionCancelSchema = z.object({ expected_version: z.number().int().min(1) });
 
 export type FinanceRepositoryFactory = (scope: FinanceScope) => FinanceRepository;
 export type FamilyRepositoryFactory = (scope: FinanceScope) => FamilyRepository;
@@ -697,6 +699,27 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     const input = sensitivePermissionSchema.parse(request.body);
     const repository = options.familyFactory?.(scope); if (!repository) return requireFamilyFactory(reply, options.familyFactory);
     return repository.updateSensitivePermission(userId, input.capability, input.enabled, input.expected_version);
+  });
+
+  app.get("/api/data-rights", async (request, reply) => {
+    const scope = requireScope(request, reply, resolveScope); if (!scope) return;
+    const repository = options.familyFactory?.(scope); if (!repository) return requireFamilyFactory(reply, options.familyFactory);
+    return repository.getDataRights();
+  });
+
+  app.post("/api/data-rights/deletion-requests", async (request, reply) => {
+    const scope = requireScope(request, reply, resolveScope); if (!scope) return;
+    const input = deletionRequestSchema.parse(request.body);
+    const repository = options.familyFactory?.(scope); if (!repository) return requireFamilyFactory(reply, options.familyFactory);
+    return reply.code(201).send(await repository.scheduleDeletion(input.request_type));
+  });
+
+  app.post<{ Params: { requestId: string } }>("/api/data-rights/deletion-requests/:requestId/cancel", async (request, reply) => {
+    const scope = requireScope(request, reply, resolveScope); if (!scope) return;
+    const requestId = z.string().uuid().parse(request.params.requestId);
+    const input = deletionCancelSchema.parse(request.body);
+    const repository = options.familyFactory?.(scope); if (!repository) return requireFamilyFactory(reply, options.familyFactory);
+    return repository.cancelDeletion(requestId, input.expected_version);
   });
 
   app.post("/api/family/topics", async (request, reply) => {

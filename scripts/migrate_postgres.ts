@@ -20,6 +20,7 @@ const files = [
   "0011_password_reset.sql",
   "0012_household_invitations.sql",
   "0013_member_sensitive_permissions.sql",
+  "0014_data_rights_deletion_requests.sql",
 ];
 
 const pool = new Pool({ connectionString: databaseUrl, max: 1 });

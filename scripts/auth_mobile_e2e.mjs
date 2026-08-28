@@ -62,6 +62,55 @@ try {
     }
   }
 
+  const dataRightsContext = await browser.newContext({ viewport: { width: 430, height: 932 } });
+  const dataRightsPage = await dataRightsContext.newPage();
+  try {
+    await dataRightsPage.goto(baseUrl, { waitUntil: "networkidle" });
+    await dataRightsPage.locator('input[name="email"]').fill(seededEmail);
+    await dataRightsPage.locator('input[name="password"]').fill(seededPassword);
+    await dataRightsPage.getByRole("button", { name: "进入我的家庭" }).click();
+    await dataRightsPage.getByRole("navigation", { name: "主导航" }).waitFor();
+    await dataRightsPage.getByRole("button", { name: "更多" }).click();
+    await dataRightsPage.getByRole("button", { name: "数据与安全" }).click();
+    await dataRightsPage.getByText("你的数据边界，清楚可见。", { exact: true }).waitFor();
+    await dataRightsPage.getByText("365", { exact: true }).waitFor();
+    const dataRightsAudits = [];
+    for (const viewport of viewports) {
+      await dataRightsPage.setViewportSize({ width: viewport.width, height: viewport.height });
+      await dataRightsPage.locator(".content-scroll").evaluate((node) => { node.scrollTop = 0; });
+      const layout = await auditAuthLayout(dataRightsPage);
+      if (layout.rootScrollWidth > layout.rootWidth) throw new Error(`data rights ${viewport.name}: horizontal overflow ${layout.rootScrollWidth} > ${layout.rootWidth}`);
+      if (layout.overflowingContainers.length) throw new Error(`data rights ${viewport.name}: nested horizontal overflow ${JSON.stringify(layout.overflowingContainers)}`);
+      if (layout.narrowControls.length) throw new Error(`data rights ${viewport.name}: control below 44pt ${JSON.stringify(layout.narrowControls)}`);
+      await dataRightsPage.screenshot({ path: `${outputDir}/data-rights-${viewport.name}.png`, fullPage: false });
+      await dataRightsPage.locator(".danger-zone").scrollIntoViewIfNeeded();
+      await dataRightsPage.screenshot({ path: `${outputDir}/data-rights-danger-${viewport.name}.png`, fullPage: false });
+      dataRightsAudits.push({ viewport, ...layout });
+    }
+    await dataRightsPage.setViewportSize({ width: 430, height: 932 });
+    await dataRightsPage.getByRole("button", { name: "申请删除家庭" }).scrollIntoViewIfNeeded();
+    await dataRightsPage.getByRole("button", { name: "申请删除家庭" }).click();
+    await dataRightsPage.getByRole("dialog").waitFor();
+    const confirmAudit = await auditAuthLayout(dataRightsPage);
+    if (confirmAudit.narrowControls.length) throw new Error(`data rights confirmation: control below 44pt ${JSON.stringify(confirmAudit.narrowControls)}`);
+    await dataRightsPage.screenshot({ path: `${outputDir}/data-rights-confirm-430x932.png`, fullPage: false });
+    await dataRightsPage.locator('input[placeholder="删除家庭"]').fill("删除家庭");
+    await dataRightsPage.getByRole("button", { name: "开始 14 天等待期" }).click();
+    await dataRightsPage.locator(".active-plans").waitFor();
+    await dataRightsPage.getByRole("button", { name: "撤销计划" }).waitFor();
+    await dataRightsPage.locator(".active-plans").scrollIntoViewIfNeeded();
+    await dataRightsPage.screenshot({ path: `${outputDir}/data-rights-scheduled-430x932.png`, fullPage: false });
+    await dataRightsPage.getByRole("button", { name: "撤销计划" }).click();
+    await dataRightsPage.locator(".active-plans").waitFor({ state: "detached" });
+    await dataRightsPage.getByRole("button", { name: "返回更多" }).click();
+    await dataRightsPage.getByRole("button", { name: "退出登录" }).click();
+    await dataRightsPage.getByRole("button", { name: "进入我的家庭" }).waitFor();
+    results.push({ dataRightsFlow: true, retentionDays: 365, householdWaitDays: 14, scheduleAndCancel: true, honestFullArchiveBoundary: true, dataRightsAudits, confirmAudit });
+  } finally {
+    await dataRightsPage.close();
+    await dataRightsContext.close();
+  }
+
   const registrationContext = await browser.newContext({ viewport: { width: 430, height: 932 } });
   const registrationPage = await registrationContext.newPage();
   const registrationEmail = `new-family-${Date.now()}@example.invalid`;
