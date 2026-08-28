@@ -57,7 +57,7 @@ function splitSql(input: string) {
 }
 
 async function migrate(db: PGlite) {
-  for (const file of ["0001_life_core_finance.sql", "0002_finance_import_state.sql", "0003_life_app_privileges.sql", "0004_family_space_ai.sql", "0005_finance_ledger_foundation.sql", "0006_finance_management_foundation.sql", "0007_finance_permissions.sql", "0008_finance_ai.sql", "0009_finance_production_hardening.sql", "0010_auth_sessions.sql", "0011_password_reset.sql", "0012_household_invitations.sql"]) {
+  for (const file of ["0001_life_core_finance.sql", "0002_finance_import_state.sql", "0003_life_app_privileges.sql", "0004_family_space_ai.sql", "0005_finance_ledger_foundation.sql", "0006_finance_management_foundation.sql", "0007_finance_permissions.sql", "0008_finance_ai.sql", "0009_finance_production_hardening.sql", "0010_auth_sessions.sql", "0011_password_reset.sql", "0012_household_invitations.sql", "0013_member_sensitive_permissions.sql"]) {
     let sql = await readFile(join(process.cwd(), "db/migrations", file), "utf8");
     sql = sql.replace("CREATE EXTENSION IF NOT EXISTS pgcrypto;", "-- pgcrypto is not bundled in PGlite").replaceAll("DEFAULT gen_random_uuid()", "");
     for (const statement of splitSql(sql)) await db.query(statement);

@@ -200,6 +200,13 @@ try {
     await invitationPage.getByText(invitedEmail, { exact: true }).waitFor();
     await invitationPage.getByText("儿童成员 · 当前账号", { exact: true }).waitFor();
     await invitationPage.screenshot({ path: `${outputDir}/members-child-430x932.png`, fullPage: false });
+    await invitationPage.getByRole("button", { name: "查看我的敏感权限" }).click();
+    await invitationPage.getByText("敏感权限", { exact: true }).waitFor();
+    await invitationPage.locator(".member-permission-sheet .permission-capability").first().waitFor();
+    if (await invitationPage.locator(".member-permission-sheet .permission-capability").count() !== 7) throw new Error("child sensitive permission list is incomplete");
+    if (await invitationPage.locator('.member-permission-sheet .permission-capability[aria-pressed="true"]').count()) throw new Error("child sensitive permissions were not denied by default");
+    await invitationPage.screenshot({ path: `${outputDir}/permissions-child-readonly-430x932.png`, fullPage: false });
+    await invitationPage.getByRole("button", { name: "关闭敏感权限" }).click();
     await invitationPage.getByRole("button", { name: "返回更多" }).click();
     await invitationPage.getByRole("button", { name: "退出登录" }).click();
 
@@ -209,12 +216,33 @@ try {
     await invitationPage.getByRole("navigation", { name: "主导航" }).waitFor();
     await invitationPage.getByRole("button", { name: "更多" }).click();
     await invitationPage.getByRole("button", { name: "家庭与成员" }).click();
-    await invitationPage.getByRole("button", { name: `管理 ${invitedEmail} 的角色` }).click();
+    await invitationPage.getByRole("button", { name: `管理 ${invitedEmail} 的敏感权限` }).click();
+    await invitationPage.getByText("敏感权限", { exact: true }).waitFor();
+    await invitationPage.locator(".member-permission-sheet .permission-capability").first().waitFor();
+    if (await invitationPage.locator(".member-permission-sheet .permission-capability").count() !== 7) throw new Error("owner sensitive permission list is incomplete");
+    const permissionAudits = [];
+    for (const viewport of viewports) {
+      await invitationPage.setViewportSize({ width: viewport.width, height: viewport.height });
+      const layout = await auditAuthLayout(invitationPage);
+      if (layout.rootScrollWidth > layout.rootWidth) throw new Error(`permissions ${viewport.name}: horizontal overflow ${layout.rootScrollWidth} > ${layout.rootWidth}`);
+      if (layout.overflowingContainers.length) throw new Error(`permissions ${viewport.name}: nested horizontal overflow ${JSON.stringify(layout.overflowingContainers)}`);
+      if (layout.narrowControls.length) throw new Error(`permissions ${viewport.name}: control below 44pt ${JSON.stringify(layout.narrowControls)}`);
+      await invitationPage.screenshot({ path: `${outputDir}/permissions-owner-${viewport.name}.png`, fullPage: false });
+      permissionAudits.push({ viewport, ...layout });
+    }
+    await invitationPage.setViewportSize({ width: 430, height: 932 });
+    await invitationPage.getByRole("button", { name: /主题摘要/ }).click();
+    await invitationPage.getByRole("button", { name: "确认授权" }).click();
+    await invitationPage.locator(".permission-success").filter({ hasText: "主题摘要已授权" }).waitFor();
+    if (await invitationPage.getByRole("button", { name: /主题摘要/ }).getAttribute("aria-pressed") !== "true") throw new Error("topic summary permission did not update in place");
+    await invitationPage.screenshot({ path: `${outputDir}/permission-granted-430x932.png`, fullPage: false });
+    await invitationPage.getByRole("button", { name: "调整角色" }).click();
     await invitationPage.locator(".family-role-sheet .family-role-segments button").filter({ hasText: "成人" }).click();
     await invitationPage.getByRole("button", { name: "确认修改" }).click();
-    await invitationPage.getByRole("button", { name: `管理 ${invitedEmail} 的角色` }).filter({ hasText: "成人" }).waitFor();
+    await invitationPage.locator(".permission-member-hero").getByText("成人成员 · 逐项授权", { exact: true }).waitFor();
+    await invitationPage.locator('.member-permission-sheet .permission-capability[aria-pressed="true"]').waitFor({ state: "detached" });
     await invitationPage.screenshot({ path: `${outputDir}/member-role-updated-430x932.png`, fullPage: false });
-    results.push({ invitationFlow: true, invitedEmail, oneHousehold: "移动端验收家庭", childJoined: true, ownerRoleUpdated: true, memberAudits, joinAudit });
+    results.push({ invitationFlow: true, invitedEmail, oneHousehold: "移动端验收家庭", childJoined: true, childPermissionsDefaultDenied: true, sensitivePermissionGranted: true, roleChangeResetPermissions: true, ownerRoleUpdated: true, memberAudits, permissionAudits, joinAudit });
   } finally {
     await invitationPage.close();
     await invitationContext.close();

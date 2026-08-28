@@ -74,7 +74,7 @@ function splitSql(input: string): string[] {
 }
 
 async function applyMigrations(db: PGlite) {
-  for (const file of ["db/migrations/0001_life_core_finance.sql", "db/migrations/0002_finance_import_state.sql", "db/migrations/0003_life_app_privileges.sql", "db/migrations/0004_family_space_ai.sql", "db/migrations/0005_finance_ledger_foundation.sql", "db/migrations/0006_finance_management_foundation.sql", "db/migrations/0007_finance_permissions.sql", "db/migrations/0008_finance_ai.sql", "db/migrations/0009_finance_production_hardening.sql", "db/migrations/0010_auth_sessions.sql", "db/migrations/0011_password_reset.sql", "db/migrations/0012_household_invitations.sql"]) {
+  for (const file of ["db/migrations/0001_life_core_finance.sql", "db/migrations/0002_finance_import_state.sql", "db/migrations/0003_life_app_privileges.sql", "db/migrations/0004_family_space_ai.sql", "db/migrations/0005_finance_ledger_foundation.sql", "db/migrations/0006_finance_management_foundation.sql", "db/migrations/0007_finance_permissions.sql", "db/migrations/0008_finance_ai.sql", "db/migrations/0009_finance_production_hardening.sql", "db/migrations/0010_auth_sessions.sql", "db/migrations/0011_password_reset.sql", "db/migrations/0012_household_invitations.sql", "db/migrations/0013_member_sensitive_permissions.sql"]) {
     let sql = await readFile(file, "utf8");
     sql = sql.replace("CREATE EXTENSION IF NOT EXISTS pgcrypto;", "-- pgcrypto is not bundled in PGlite").replaceAll("DEFAULT gen_random_uuid()", "");
     for (const statement of splitSql(sql)) await db.query(statement);
@@ -358,6 +358,50 @@ describe("PostgreSQL finance vertical slice", () => {
     const childCookie = String(Array.isArray(childCookieHeader) ? childCookieHeader[0] : childCookieHeader).split(";")[0];
     const childUserId = accepted.json().user.id;
 
+    const childPermissionSnapshot = await authApp.inject({ method: "GET", url: `/api/family/members/${childUserId}/sensitive-permissions`, headers: { cookie: childCookie } });
+    expect(childPermissionSnapshot.statusCode, childPermissionSnapshot.body).toBe(200);
+    expect(childPermissionSnapshot.json().permissions).toHaveLength(7);
+    expect(childPermissionSnapshot.json().permissions.every((item: { enabled: boolean; version: number }) => !item.enabled && item.version === 0)).toBe(true);
+    const childCannotInspectOwner = await authApp.inject({ method: "GET", url: `/api/family/members/${userA}/sensitive-permissions`, headers: { cookie: childCookie } });
+    expect(childCannotInspectOwner.statusCode).toBe(403);
+    const deniedSummary = await authApp.inject({ method: "POST", url: "/api/family/topics/a1000000-0000-0000-0000-0000000000a1/ai-summary", headers: { cookie: childCookie } });
+    expect(deniedSummary.statusCode).toBe(403);
+    expect(deniedSummary.json().code).toBe("SENSITIVE_PERMISSION_DENIED");
+
+    const grantedSummaryPermission = await authApp.inject({
+      method: "PATCH",
+      url: `/api/family/members/${childUserId}/sensitive-permissions`,
+      headers: { cookie: ownerCookie },
+      payload: { capability: "ai_topic_summary", enabled: true, expected_version: 0 },
+    });
+    expect(grantedSummaryPermission.statusCode, grantedSummaryPermission.body).toBe(200);
+    expect(grantedSummaryPermission.json().permissions.find((item: { capability: string }) => item.capability === "ai_topic_summary").version).toBe(1);
+    const staleGrant = await authApp.inject({
+      method: "PATCH",
+      url: `/api/family/members/${childUserId}/sensitive-permissions`,
+      headers: { cookie: ownerCookie },
+      payload: { capability: "ai_topic_summary", enabled: false, expected_version: 0 },
+    });
+    expect(staleGrant.statusCode).toBe(409);
+    expect(staleGrant.json().code).toBe("SENSITIVE_PERMISSION_VERSION_CONFLICT");
+    const allowedSummary = await authApp.inject({ method: "POST", url: "/api/family/topics/a1000000-0000-0000-0000-0000000000a1/ai-summary", headers: { cookie: childCookie } });
+    expect(allowedSummary.statusCode, allowedSummary.body).toBe(200);
+
+    const childFinanceExportGrant = await authApp.inject({ method: "PATCH", url: `/api/finance/permissions/${childUserId}`, headers: { cookie: ownerCookie }, payload: { can_view: true, can_bookkeep: false, can_edit: false, can_import: false, can_reconcile: false, can_export: true } });
+    expect(childFinanceExportGrant.statusCode).toBe(200);
+    const exportStillDenied = await authApp.inject({ method: "POST", url: "/api/finance/exports", headers: { cookie: childCookie, "idempotency-key": "child-export-denied" }, payload: { start: "2026-08-01", end: "2026-08-31", format: "csv" } });
+    expect(exportStillDenied.statusCode).toBe(403);
+    expect(exportStillDenied.json().code).toBe("SENSITIVE_PERMISSION_DENIED");
+    const grantedHouseholdExport = await authApp.inject({
+      method: "PATCH",
+      url: `/api/family/members/${childUserId}/sensitive-permissions`,
+      headers: { cookie: ownerCookie },
+      payload: { capability: "household_export", enabled: true, expected_version: 0 },
+    });
+    expect(grantedHouseholdExport.statusCode).toBe(200);
+    const exportAllowed = await authApp.inject({ method: "POST", url: "/api/finance/exports", headers: { cookie: childCookie, "idempotency-key": "child-export-allowed" }, payload: { start: "2026-08-01", end: "2026-08-31", format: "csv" } });
+    expect(exportAllowed.statusCode, exportAllowed.body).toBe(202);
+
     const replay = await authApp.inject({ method: "POST", url: "/api/auth/invitations/accept", payload: { token: invitation.invite_code, email: "other@example.invalid", password: "invited-password" } });
     expect(replay.statusCode).toBe(409);
     expect(replay.json().code).toBe("INVITATION_USED");
@@ -377,8 +421,13 @@ describe("PostgreSQL finance vertical slice", () => {
     expect(roleChanged.json().role).toBe("adult");
     await db.query("RESET ROLE");
     const resetPermission = await db.query<{ revoked_at: string | null }>("SELECT revoked_at::text AS revoked_at FROM financial_permission WHERE household_id = $1 AND user_id = $2", [householdA, childUserId]);
+    const resetSensitivePermission = await db.query<{ enabled: boolean; version: number; revoked_at: string | null }>("SELECT enabled, version, revoked_at::text AS revoked_at FROM member_sensitive_permission WHERE household_id = $1 AND user_id = $2 AND capability = 'ai_topic_summary'", [householdA, childUserId]);
     await db.query("SET ROLE life_app");
     expect(resetPermission.rows[0].revoked_at).not.toBeNull();
+    expect(resetSensitivePermission.rows[0]).toMatchObject({ enabled: false, version: 2 });
+    expect(resetSensitivePermission.rows[0].revoked_at).not.toBeNull();
+    const deniedAfterRoleChange = await authApp.inject({ method: "POST", url: "/api/family/topics/a1000000-0000-0000-0000-0000000000a1/ai-summary", headers: { cookie: childCookie } });
+    expect(deniedAfterRoleChange.statusCode).toBe(403);
 
     const second = await authApp.inject({ method: "POST", url: "/api/family/invitations", headers: { cookie: ownerCookie }, payload: { role: "guest", expires_in_days: 1 } });
     const revoked = await authApp.inject({ method: "DELETE", url: `/api/family/invitations/${second.json().id}`, headers: { cookie: ownerCookie } });
@@ -399,7 +448,9 @@ describe("PostgreSQL finance vertical slice", () => {
     expect(ownerLocked.statusCode).toBe(409);
     await db.query("RESET ROLE");
     const audit = await db.query<{ count: number }>("SELECT count(*)::int AS count FROM audit_log WHERE household_id = $1 AND action IN ('household_invitation.create', 'household_invitation.revoke', 'household_member.role_update')", [householdA]);
+    const sensitiveAudit = await db.query<{ count: number }>("SELECT count(*)::int AS count FROM audit_log WHERE household_id = $1 AND action = 'household_member.sensitive_permission_update'", [householdA]);
     expect(audit.rows[0].count).toBe(5);
+    expect(sensitiveAudit.rows[0].count).toBe(2);
   });
 
   it("enqueues a permissioned CSV export, completes it asynchronously, expires it, and serves only the household file", async () => {

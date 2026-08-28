@@ -2,6 +2,7 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { DomainError } from "./domain-error.js";
 import { inTenantTransaction, type DbClient, type DbPool, type FinanceScope } from "./database.js";
 import { DeterministicTopicAiProvider, type TopicAiProvider } from "./ai-gateway.js";
+import { assertSensitivePermission, type SensitiveCapability } from "./sensitive-permissions.js";
 
 export type FamilyTopicType = "idea" | "request" | "inspiration" | "memory" | "other";
 export type FamilyTopicCard = {
@@ -48,6 +49,21 @@ export type FamilyInvitation = {
   accepted_at: string | null;
 };
 export type CreatedFamilyInvitation = FamilyInvitation & { invite_code: string };
+export type SensitivePermissionItem = {
+  capability: SensitiveCapability;
+  enabled: boolean;
+  explicit: boolean;
+  version: number;
+  granted_at: string | null;
+  revoked_at: string | null;
+  updated_at: string | null;
+};
+export type MemberSensitivePermissionSnapshot = {
+  user_id: string;
+  email: string;
+  role: FamilyMemberRole;
+  permissions: SensitivePermissionItem[];
+};
 
 export type CreateTopicInput = { topicType: FamilyTopicType; title: string; body: string };
 
@@ -63,6 +79,8 @@ export interface FamilyRepository {
   createInvitation(role: Exclude<FamilyMemberRole, "owner">, expiresInDays: number): Promise<CreatedFamilyInvitation>;
   revokeInvitation(invitationId: string): Promise<{ invitation_id: string }>;
   updateMemberRole(userId: string, role: Exclude<FamilyMemberRole, "owner">): Promise<FamilyMember>;
+  getSensitivePermissions(userId: string): Promise<MemberSensitivePermissionSnapshot>;
+  updateSensitivePermission(userId: string, capability: SensitiveCapability, enabled: boolean, expectedVersion: number): Promise<MemberSensitivePermissionSnapshot>;
 }
 
 type TopicRow = {
@@ -179,6 +197,7 @@ export class SqlFamilyRepository implements FamilyRepository {
 
   async summarizeTopic(topicId: string) {
     return inTenantTransaction(this.pool, this.scope, async (client) => {
+      await assertSensitivePermission(client, this.scope, "ai_topic_summary");
       const topic = await this.getTopicWithClient(client, topicId);
       if (!topic) throw new DomainError("NOT_FOUND", "主题不存在", 404);
       const generated = await this.aiProvider.summarizeTopic({
@@ -209,6 +228,7 @@ export class SqlFamilyRepository implements FamilyRepository {
 
   async decideAction(proposalId: string, decision: "confirm" | "reject", expectedVersion: number) {
     return inTenantTransaction(this.pool, this.scope, async (client) => {
+      await assertSensitivePermission(client, this.scope, "ai_topic_summary");
       const proposalResult = await client.query<{ id: string; action_type: AiActionProposal["action_type"]; status: AiActionProposal["status"]; version: number; payload: unknown }>(
         `SELECT id::text AS id, action_type, status, version, payload
            FROM ai_action_proposal
@@ -305,10 +325,39 @@ export class SqlFamilyRepository implements FamilyRepository {
         [this.scope.householdId, this.scope.userId, userId, role],
       );
       if (result.rows[0]?.updated !== true) throw new DomainError("MEMBER_ROLE_UPDATE_FAILED", "成员角色更新失败", 409);
-      await this.writeAudit(client, "household_member.role_update", "household_member", userId, { before_role: before.role, role, finance_permission_reset: true });
+      await this.writeAudit(client, "household_member.role_update", "household_member", userId, { before_role: before.role, role, finance_permission_reset: true, sensitive_permission_reset: true });
       const after = (await this.listMembersWithClient(client)).find((member) => member.user_id === userId);
       if (!after) throw new DomainError("MEMBER_NOT_FOUND", "家庭成员不存在", 404);
       return after;
+    });
+  }
+
+  async getSensitivePermissions(userId: string): Promise<MemberSensitivePermissionSnapshot> {
+    return inTenantTransaction(this.pool, this.scope, async (client) => this.getSensitivePermissionsWithClient(client, userId));
+  }
+
+  async updateSensitivePermission(userId: string, capability: SensitiveCapability, enabled: boolean, expectedVersion: number): Promise<MemberSensitivePermissionSnapshot> {
+    return inTenantTransaction(this.pool, this.scope, async (client) => {
+      await this.assertOwner(client);
+      const before = await this.getSensitivePermissionsWithClient(client, userId);
+      if (before.role === "owner") throw new DomainError("OWNER_PERMISSION_LOCKED", "家庭所有者的敏感权限不能关闭", 409);
+      const previous = before.permissions.find((item) => item.capability === capability);
+      if (!previous) throw new DomainError("SENSITIVE_PERMISSION_INVALID", "敏感权限类型无效", 400);
+      const result = await client.query<{ new_version: number }>(
+        "SELECT life_family_update_sensitive_permission($1, $2, $3, $4, $5, $6, $7) AS new_version",
+        [randomUUID(), this.scope.householdId, this.scope.userId, userId, capability, enabled, expectedVersion],
+      );
+      const version = Number(result.rows[0]?.new_version ?? 0);
+      if (version === -1) throw new DomainError("SENSITIVE_PERMISSION_VERSION_CONFLICT", "权限已被其他操作更新，请刷新后重试", 409);
+      if (version === -2) throw new DomainError("SENSITIVE_PERMISSION_NO_CHANGE", "权限状态没有变化", 409);
+      if (version < 1) throw new DomainError("SENSITIVE_PERMISSION_UPDATE_FAILED", "敏感权限更新失败", 409);
+      await this.writeAudit(client, "household_member.sensitive_permission_update", "member_sensitive_permission", userId, {
+        capability,
+        before_enabled: previous.enabled,
+        enabled,
+        version,
+      });
+      return this.getSensitivePermissionsWithClient(client, userId);
     });
   }
 
@@ -348,6 +397,32 @@ export class SqlFamilyRepository implements FamilyRepository {
       status: "active" as const,
       joined_at: String(row.joined_at),
     }));
+  }
+
+  private async getSensitivePermissionsWithClient(client: DbClient, userId: string): Promise<MemberSensitivePermissionSnapshot> {
+    const members = await this.listMembersWithClient(client);
+    const actor = members.find((item) => item.user_id === this.scope.userId);
+    const member = members.find((item) => item.user_id === userId);
+    if (!actor || (actor.role !== "owner" && actor.user_id !== userId)) throw new DomainError("SENSITIVE_PERMISSION_DENIED", "只能查看自己的敏感授权", 403);
+    if (!member) throw new DomainError("MEMBER_NOT_FOUND", "家庭成员不存在", 404);
+    const result = await client.query<Record<string, unknown>>(
+      "SELECT * FROM life_family_list_sensitive_permissions($1, $2, $3)",
+      [this.scope.householdId, this.scope.userId, userId],
+    );
+    return {
+      user_id: member.user_id,
+      email: member.email,
+      role: member.role,
+      permissions: result.rows.map((row) => ({
+        capability: String(row.capability) as SensitiveCapability,
+        enabled: Boolean(row.enabled),
+        explicit: Boolean(row.explicit),
+        version: Number(row.version),
+        granted_at: row.granted_at ? String(row.granted_at) : null,
+        revoked_at: row.revoked_at ? String(row.revoked_at) : null,
+        updated_at: row.updated_at ? String(row.updated_at) : null,
+      })),
+    };
   }
 
   private mapInvitation(row: Record<string, unknown>): FamilyInvitation {

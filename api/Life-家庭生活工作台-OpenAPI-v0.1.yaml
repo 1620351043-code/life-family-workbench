@@ -586,6 +586,7 @@ paths:
       tags: [Finance Overview]
       operationId: createFinanceExport
       summary: 创建带审计和有效期的异步账单导出任务
+      description: 同时要求成员的财务导出权限与家庭数据导出敏感授权。
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
@@ -608,6 +609,7 @@ paths:
       tags: [Finance Overview]
       operationId: getFinanceExport
       summary: 获取导出任务状态
+      description: 同时要求成员的财务导出权限与家庭数据导出敏感授权。
       parameters:
         - name: exportId
           in: path
@@ -631,6 +633,7 @@ paths:
       tags: [Finance Overview]
       operationId: downloadFinanceExport
       summary: 下载当前家庭的短时有效账单导出
+      description: 同时要求成员的财务导出权限与家庭数据导出敏感授权。
       parameters:
         - name: exportId
           in: path
@@ -655,6 +658,7 @@ paths:
       tags: [Finance AI]
       operationId: getFinanceAiSummary
       summary: 获取带来源引用的财务 AI 摘要与解释
+      description: 同时要求财务查看权限和财务解释敏感授权；个性化记忆未授权时不会写入家庭记忆。
       parameters:
         - $ref: '#/components/parameters/PeriodStart'
         - $ref: '#/components/parameters/PeriodEnd'
@@ -673,7 +677,7 @@ paths:
     get:
       tags: [Finance AI]
       operationId: getFinanceAiConnection
-      summary: 获取当前家庭 AI 连接元数据
+      summary: 由家庭所有者获取当前家庭 AI 连接元数据
       responses:
         '200':
           description: 不包含 API 密钥的家庭 AI 连接
@@ -1055,6 +1059,53 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/FamilyMember'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/family/members/{userId}/sensitive-permissions:
+    get:
+      tags: [Family Space]
+      operationId: getHouseholdMemberSensitivePermissions
+      summary: 查看成员的家庭敏感权限
+      description: 家庭所有者可查看任一成员，其他成员只能查看自己。所有者固定全开，其他成员未显式授权时默认关闭。
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      responses:
+        '200':
+          description: 成员敏感权限快照
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MemberSensitivePermissionSnapshot'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [Family Space]
+      operationId: updateHouseholdMemberSensitivePermission
+      summary: 由家庭所有者逐项授权或撤销敏感能力
+      description: 使用单项版本进行乐观并发控制。角色变化会撤销该成员全部显式敏感授权。
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateSensitivePermissionRequest'
+      responses:
+        '200':
+          description: 更新后的完整权限快照
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MemberSensitivePermissionSnapshot'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '403':
           $ref: '#/components/responses/Forbidden'
         '404':
@@ -1893,6 +1944,71 @@ components:
         joined_at:
           type: string
           format: date-time
+    SensitiveCapability:
+      type: string
+      enum:
+        - ai_food_recommendation
+        - ai_topic_summary
+        - ai_finance_insight
+        - ai_cooking_assistant
+        - ai_memory_personalization
+        - media_original
+        - household_export
+    SensitivePermissionItem:
+      type: object
+      required: [capability, enabled, explicit, version, granted_at, revoked_at, updated_at]
+      properties:
+        capability:
+          $ref: '#/components/schemas/SensitiveCapability'
+        enabled:
+          type: boolean
+        explicit:
+          type: boolean
+        version:
+          type: integer
+          minimum: 0
+        granted_at:
+          type: string
+          format: date-time
+          nullable: true
+        revoked_at:
+          type: string
+          format: date-time
+          nullable: true
+        updated_at:
+          type: string
+          format: date-time
+          nullable: true
+    MemberSensitivePermissionSnapshot:
+      type: object
+      required: [user_id, email, role, permissions]
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        role:
+          type: string
+          enum: [owner, adult, child, guest]
+        permissions:
+          type: array
+          minItems: 7
+          maxItems: 7
+          items:
+            $ref: '#/components/schemas/SensitivePermissionItem'
+    UpdateSensitivePermissionRequest:
+      type: object
+      required: [capability, enabled, expected_version]
+      properties:
+        capability:
+          $ref: '#/components/schemas/SensitiveCapability'
+        enabled:
+          type: boolean
+        expected_version:
+          type: integer
+          minimum: 0
     UpdateFamilyMemberRoleRequest:
       type: object
       required: [role]
