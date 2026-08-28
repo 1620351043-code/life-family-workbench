@@ -13,6 +13,7 @@ import { runFinanceExportJob } from "./finance-export-worker.js";
 import { SqlAuthStore, type AuthSession, type AuthStore } from "./auth.js";
 import { InMemoryAuthAttemptLimiter, type AuthAttemptLimiter, type AuthRateLimitInput } from "./auth-rate-limit.js";
 import { createPasswordResetDeliveryFromEnv, type PasswordResetDelivery } from "./password-reset-delivery.js";
+import { sensitiveCapabilities } from "./sensitive-permissions.js";
 
 const sourceTypes = ["bank", "alipay", "wechat", "bookkeeping_app", "other"] as const;
 const overviewQuerySchema = z.object({ start: z.string().date(), end: z.string().date(), granularity: z.enum(["day", "week", "month", "quarter"]).default("day") });
@@ -64,6 +65,11 @@ const invitationAcceptSchema = z.object({
 const invitationRoleSchema = z.enum(["adult", "child", "guest"]);
 const createInvitationSchema = z.object({ role: invitationRoleSchema, expires_in_days: z.number().int().min(1).max(30).default(7) });
 const memberRoleSchema = z.object({ role: invitationRoleSchema });
+const sensitivePermissionSchema = z.object({
+  capability: z.enum(sensitiveCapabilities),
+  enabled: z.boolean(),
+  expected_version: z.number().int().min(0),
+});
 
 export type FinanceRepositoryFactory = (scope: FinanceScope) => FinanceRepository;
 export type FamilyRepositoryFactory = (scope: FinanceScope) => FamilyRepository;
@@ -676,6 +682,21 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     const input = memberRoleSchema.parse(request.body);
     const repository = options.familyFactory?.(scope); if (!repository) return requireFamilyFactory(reply, options.familyFactory);
     return repository.updateMemberRole(userId, input.role);
+  });
+
+  app.get<{ Params: { userId: string } }>("/api/family/members/:userId/sensitive-permissions", async (request, reply) => {
+    const scope = requireScope(request, reply, resolveScope); if (!scope) return;
+    const userId = z.string().uuid().parse(request.params.userId);
+    const repository = options.familyFactory?.(scope); if (!repository) return requireFamilyFactory(reply, options.familyFactory);
+    return repository.getSensitivePermissions(userId);
+  });
+
+  app.patch<{ Params: { userId: string } }>("/api/family/members/:userId/sensitive-permissions", async (request, reply) => {
+    const scope = requireScope(request, reply, resolveScope); if (!scope) return;
+    const userId = z.string().uuid().parse(request.params.userId);
+    const input = sensitivePermissionSchema.parse(request.body);
+    const repository = options.familyFactory?.(scope); if (!repository) return requireFamilyFactory(reply, options.familyFactory);
+    return repository.updateSensitivePermission(userId, input.capability, input.enabled, input.expected_version);
   });
 
   app.post("/api/family/topics", async (request, reply) => {

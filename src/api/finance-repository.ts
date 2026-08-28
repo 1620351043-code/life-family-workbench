@@ -1,4 +1,5 @@
 import { DomainError } from "./domain-error.js";
+import { assertSensitivePermission, hasSensitivePermission } from "./sensitive-permissions.js";
 import { createHash, randomUUID } from "node:crypto";
 import { inTenantTransaction, type DbClient, type DbPool, type FinanceScope } from "./database.js";
 import { aiMemoryObjectKey, importObjectKey, type ImportObjectStore } from "./import-storage.js";
@@ -1192,6 +1193,7 @@ export class SqlFinanceRepository implements FinanceRepository {
   async enqueueFinanceExport(input: { start: string; end: string; format: "csv"; idempotencyKey?: string }): Promise<FinanceExportJob> {
     return inTenantTransaction(this.pool, this.scope, async (client) => {
       await assertFinancialPermission(client, this.scope, "export");
+      await assertSensitivePermission(client, this.scope, "household_export");
       if (input.end < input.start) throw new DomainError("BAD_REQUEST", "导出结束日期不能早于开始日期", 400);
       const id = randomUUID();
       const idempotencyKey = nullableText(input.idempotencyKey);
@@ -1214,6 +1216,7 @@ export class SqlFinanceRepository implements FinanceRepository {
   async getFinanceExport(jobId: string): Promise<FinanceExportJob | null> {
     return inTenantTransaction(this.pool, this.scope, async (client) => {
       await assertFinancialPermission(client, this.scope, "export");
+      await assertSensitivePermission(client, this.scope, "household_export");
       const result = await client.query<Record<string, unknown>>(
         `SELECT id::text AS id, format, period_start::text AS period_start, period_end::text AS period_end,
                 status, object_key, row_count, download_expires_at::text AS download_expires_at,
@@ -1235,7 +1238,7 @@ export class SqlFinanceRepository implements FinanceRepository {
 
   async getFinanceAiConnection(): Promise<FinanceAiConnection | null> {
     return inTenantTransaction(this.pool, this.scope, async (client) => {
-      await assertFinancialPermission(client, this.scope, "view");
+      await assertFinanceOwner(client, this.scope);
       const result = await client.query<Record<string, unknown>>(
         `SELECT provider, endpoint_url, model, api_key_ref, status, last_tested_at::text AS last_tested_at, last_error
            FROM household_ai_connection WHERE household_id = $1`,
@@ -1312,6 +1315,7 @@ export class SqlFinanceRepository implements FinanceRepository {
   async getFinanceAiSummary(start: string, end: string): Promise<FinanceAiSummary> {
     return inTenantTransaction(this.pool, this.scope, async (client) => {
       await assertFinancialPermission(client, this.scope, "view");
+      await assertSensitivePermission(client, this.scope, "ai_finance_insight");
       if (end < start) throw new DomainError("BAD_REQUEST", "财务周期结束日期不能早于开始日期", 400);
       const drilldownRef = await insertFilter(client, this.scope, "ledger_period", { start, end });
       const totals = await client.query<{ income: string; expense: string; net_cash_flow: string }>(
@@ -1361,20 +1365,23 @@ export class SqlFinanceRepository implements FinanceRepository {
       const content = { summary, key_points: keyPoints, explanations, period: { start, end }, formal_ledger_mutation: false };
       const memoryKey = `finance/summary/${start}_${end}`;
       const memoryPayload = { memory_key: memoryKey, household_id: this.scope.householdId, period: { start, end }, provider: provider.name, summary, key_points: keyPoints, source_refs: sourceRefs.map((item) => ({ kind: item.kind, id: item.id })) };
-      const memoryUpdate = await client.query(
-        `UPDATE ai_memory_document SET content = $3::jsonb, source_refs = $4::jsonb, version = version + 1, updated_at = now()
-          WHERE household_id = $1 AND owner_user_id IS NULL AND memory_key = $2`,
-        [this.scope.householdId, memoryKey, JSON.stringify(memoryPayload), JSON.stringify(sourceRefs)],
-      );
-      if ((memoryUpdate.rowCount ?? 0) === 0) {
-        await client.query(
-          `INSERT INTO ai_memory_document (id, household_id, owner_user_id, memory_key, content, source_refs)
-           VALUES ($1, $2, NULL, $3, $4::jsonb, $5::jsonb)`,
-          [randomUUID(), this.scope.householdId, memoryKey, JSON.stringify(memoryPayload), JSON.stringify(sourceRefs)],
+      const memoryAllowed = await hasSensitivePermission(client, this.scope, "ai_memory_personalization");
+      if (memoryAllowed) {
+        const memoryUpdate = await client.query(
+          `UPDATE ai_memory_document SET content = $3::jsonb, source_refs = $4::jsonb, version = version + 1, updated_at = now()
+            WHERE household_id = $1 AND owner_user_id IS NULL AND memory_key = $2`,
+          [this.scope.householdId, memoryKey, JSON.stringify(memoryPayload), JSON.stringify(sourceRefs)],
         );
+        if ((memoryUpdate.rowCount ?? 0) === 0) {
+          await client.query(
+            `INSERT INTO ai_memory_document (id, household_id, owner_user_id, memory_key, content, source_refs)
+             VALUES ($1, $2, NULL, $3, $4::jsonb, $5::jsonb)`,
+            [randomUUID(), this.scope.householdId, memoryKey, JSON.stringify(memoryPayload), JSON.stringify(sourceRefs)],
+          );
+        }
       }
       let memoryArtifactId: string | null = null;
-      if (this.aiMemoryStore) {
+      if (memoryAllowed && this.aiMemoryStore) {
         memoryArtifactId = randomUUID();
         const memoryBytes = Buffer.from(JSON.stringify(memoryPayload), "utf8");
         const memoryObjectKey = aiMemoryObjectKey(this.scope.householdId, memoryArtifactId);
@@ -1405,6 +1412,7 @@ export class SqlFinanceRepository implements FinanceRepository {
   async decideFinanceAiProposal(proposalId: string, decision: "confirm" | "reject", expectedVersion: number): Promise<{ proposal: FinanceAiProposal; execution: { formal_ledger_mutation: false } | null }> {
     return inTenantTransaction(this.pool, this.scope, async (client) => {
       await assertFinancialPermission(client, this.scope, "reconcile");
+      await assertSensitivePermission(client, this.scope, "ai_finance_insight");
       const result = await client.query<Record<string, unknown>>(
         "SELECT ap.id::text AS id, ap.action_type, ap.status, ap.version, ap.payload FROM ai_action_proposal ap JOIN ai_insight ai ON ai.household_id = ap.household_id AND ai.id = ap.insight_id WHERE ap.household_id = $1 AND ap.id = $2 AND ai.scope_type = 'finance' FOR UPDATE",
         [this.scope.householdId, proposalId],
@@ -1431,6 +1439,7 @@ export class SqlFinanceRepository implements FinanceRepository {
   async revokeFinanceAiProposal(proposalId: string): Promise<{ proposal: FinanceAiProposal }> {
     return inTenantTransaction(this.pool, this.scope, async (client) => {
       await assertFinancialPermission(client, this.scope, "reconcile");
+      await assertSensitivePermission(client, this.scope, "ai_finance_insight");
       const result = await client.query<Record<string, unknown>>(
         "SELECT ap.id::text AS id, ap.action_type, ap.status, ap.version, ap.payload FROM ai_action_proposal ap JOIN ai_insight ai ON ai.household_id = ap.household_id AND ai.id = ap.insight_id WHERE ap.household_id = $1 AND ap.id = $2 AND ai.scope_type = 'finance' FOR UPDATE",
         [this.scope.householdId, proposalId],

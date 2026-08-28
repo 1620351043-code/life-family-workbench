@@ -20,6 +20,9 @@ export type FamilyMemberRole = "owner" | "adult" | "child" | "guest";
 export type FamilyMember = { user_id: string; email: string; role: FamilyMemberRole; status: "active"; joined_at: string };
 export type FamilyInvitation = { id: string; role: Exclude<FamilyMemberRole, "owner">; status: "active" | "expired" | "revoked" | "used"; expires_at: string; created_at: string; accepted_at: string | null };
 export type CreatedFamilyInvitation = FamilyInvitation & { invite_code: string };
+export type SensitiveCapability = "ai_food_recommendation" | "ai_topic_summary" | "ai_finance_insight" | "ai_cooking_assistant" | "ai_memory_personalization" | "media_original" | "household_export";
+export type SensitivePermissionItem = { capability: SensitiveCapability; enabled: boolean; explicit: boolean; version: number; granted_at: string | null; revoked_at: string | null; updated_at: string | null };
+export type MemberSensitivePermissionSnapshot = { user_id: string; email: string; role: FamilyMemberRole; permissions: SensitivePermissionItem[] };
 export type HouseholdInvitationPreview = { status: "active" | "expired" | "revoked" | "used"; invitationId: string; householdId: string; householdName: string; inviterEmail: string; role: Exclude<FamilyMemberRole, "owner">; expiresAt: string };
 
 export type FinanceDrilldownRef = { type: string; filter_id: string; filters: Record<string, string> };
@@ -218,6 +221,8 @@ export const familyApi = {
   createInvitation: (role: Exclude<FamilyMemberRole, "owner">, expiresInDays: number) => request<CreatedFamilyInvitation>("/api/family/invitations", { method: "POST", body: JSON.stringify({ role, expires_in_days: expiresInDays }) }),
   revokeInvitation: (invitationId: string) => request<{ invitation_id: string }>(`/api/family/invitations/${invitationId}`, { method: "DELETE" }),
   updateMemberRole: (userId: string, role: Exclude<FamilyMemberRole, "owner">) => request<FamilyMember>(`/api/family/members/${userId}/role`, { method: "PATCH", body: JSON.stringify({ role }) }),
+  getSensitivePermissions: (userId: string) => request<MemberSensitivePermissionSnapshot>(`/api/family/members/${userId}/sensitive-permissions`),
+  updateSensitivePermission: (userId: string, capability: SensitiveCapability, enabled: boolean, expectedVersion: number) => request<MemberSensitivePermissionSnapshot>(`/api/family/members/${userId}/sensitive-permissions`, { method: "PATCH", body: JSON.stringify({ capability, enabled, expected_version: expectedVersion }) }),
 };
 
 export const authApi = {
