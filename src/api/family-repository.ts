@@ -2,7 +2,7 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { DomainError } from "./domain-error.js";
 import { inTenantTransaction, type DbClient, type DbPool, type FinanceScope } from "./database.js";
 import { DeterministicTopicAiProvider, type TopicAiProvider } from "./ai-gateway.js";
-import { assertSensitivePermission, type SensitiveCapability } from "./sensitive-permissions.js";
+import { assertSensitivePermission, hasSensitivePermission, type SensitiveCapability } from "./sensitive-permissions.js";
 
 export type FamilyTopicType = "idea" | "request" | "inspiration" | "memory" | "other";
 export type FamilyTopicCard = {
@@ -64,6 +64,36 @@ export type MemberSensitivePermissionSnapshot = {
   role: FamilyMemberRole;
   permissions: SensitivePermissionItem[];
 };
+export type DataDeletionRequestType = "account" | "household";
+export type DataDeletionRequest = {
+  id: string;
+  request_type: DataDeletionRequestType;
+  status: "scheduled" | "processing" | "cancelled" | "completed" | "failed";
+  version: number;
+  requested_at: string;
+  execute_after: string;
+  cancelled_at: string | null;
+  completed_at: string | null;
+  scope_summary: Record<string, unknown>;
+};
+export type DataRightsSummary = {
+  role: FamilyMemberRole;
+  policies: {
+    household_isolation: true;
+    ai_isolation: true;
+    original_bill_retention_days: 365;
+    original_bill_notice_days: 30;
+  };
+  exports: {
+    finance_ledger: { available: boolean; status: "available" | "permission_required"; route: "/finance"; description: string };
+    household_archive: { available: false; status: "planned"; description: string };
+  };
+  deletion: {
+    account: { available: boolean; wait_days: 7; consequence: string };
+    household: { available: boolean; wait_days: 14; consequence: string };
+  };
+  requests: DataDeletionRequest[];
+};
 
 export type CreateTopicInput = { topicType: FamilyTopicType; title: string; body: string };
 
@@ -81,6 +111,9 @@ export interface FamilyRepository {
   updateMemberRole(userId: string, role: Exclude<FamilyMemberRole, "owner">): Promise<FamilyMember>;
   getSensitivePermissions(userId: string): Promise<MemberSensitivePermissionSnapshot>;
   updateSensitivePermission(userId: string, capability: SensitiveCapability, enabled: boolean, expectedVersion: number): Promise<MemberSensitivePermissionSnapshot>;
+  getDataRights(): Promise<DataRightsSummary>;
+  scheduleDeletion(requestType: DataDeletionRequestType): Promise<DataRightsSummary>;
+  cancelDeletion(requestId: string, expectedVersion: number): Promise<DataRightsSummary>;
 }
 
 type TopicRow = {
@@ -361,6 +394,68 @@ export class SqlFamilyRepository implements FamilyRepository {
     });
   }
 
+  async getDataRights(): Promise<DataRightsSummary> {
+    return inTenantTransaction(this.pool, this.scope, async (client) => this.getDataRightsWithClient(client));
+  }
+
+  async scheduleDeletion(requestType: DataDeletionRequestType): Promise<DataRightsSummary> {
+    try {
+      return await inTenantTransaction(this.pool, this.scope, async (client) => {
+        const rights = await this.getDataRightsWithClient(client);
+        if (requestType === "account" && !rights.deletion.account.available) {
+          throw new DomainError("OWNER_ACCOUNT_DELETION_REQUIRES_HOUSEHOLD", "家庭所有者不能单独删除账号，请先导出数据并申请删除家庭", 409);
+        }
+        if (requestType === "household" && !rights.deletion.household.available) {
+          throw new DomainError("HOUSEHOLD_OWNER_REQUIRED", "只有家庭所有者可以申请删除家庭", 403);
+        }
+        const duplicate = rights.requests.find((item) => item.request_type === requestType && ["scheduled", "processing"].includes(item.status));
+        if (duplicate) throw new DomainError("DELETION_ALREADY_SCHEDULED", "已经存在同类型的删除计划", 409);
+        const id = randomUUID();
+        const waitDays = requestType === "account" ? 7 : 14;
+        const scopeSummary = requestType === "account"
+          ? { login: "disable", membership: "remove", personal_ai_memory: "delete", authored_household_content: "retain_with_pseudonym", formal_ledger_and_audit: "retain" }
+          : { household_data: "delete", raw_files: "delete", ai_memory_and_indexes: "delete", sessions: "revoke", deletion_audit: "retain_minimum", backups: "expire_by_backup_policy" };
+        const created = await client.query<{ request_id: string | null }>(
+          "SELECT life_data_schedule_deletion($1, $2, $3, $4, $5, $6::jsonb)::text AS request_id",
+          [id, this.scope.householdId, this.scope.userId, requestType, waitDays, JSON.stringify(scopeSummary)],
+        );
+        if (created.rows[0]?.request_id !== id) throw new DomainError("DELETION_SCHEDULE_FAILED", "删除计划创建失败", 409);
+        await this.writeAudit(client, `data_deletion.${requestType}.schedule`, "data_deletion_request", id, { request_type: requestType, wait_days: waitDays, execute_after_policy: "server_clock" });
+        return this.getDataRightsWithClient(client);
+      });
+    } catch (error) {
+      if (typeof error === "object" && error && "code" in error && (error as { code?: string }).code === "23505") {
+        throw new DomainError("DELETION_ALREADY_SCHEDULED", "已经存在同类型的删除计划", 409);
+      }
+      throw error;
+    }
+  }
+
+  async cancelDeletion(requestId: string, expectedVersion: number): Promise<DataRightsSummary> {
+    return inTenantTransaction(this.pool, this.scope, async (client) => {
+      const current = await client.query<{ request_type: DataDeletionRequestType; requested_by: string; status: DataDeletionRequest["status"] }>(
+        `SELECT request_type, requested_by::text AS requested_by, status
+           FROM data_deletion_request
+          WHERE household_id = $1 AND id = $2`,
+        [this.scope.householdId, requestId],
+      );
+      const request = current.rows[0];
+      if (!request || request.status !== "scheduled") throw new DomainError("DELETION_NOT_CANCELLABLE", "删除计划不存在、已进入处理或已经结束", 409);
+      const rights = await this.getDataRightsWithClient(client);
+      if (request.request_type === "account" && request.requested_by !== this.scope.userId) throw new DomainError("DELETION_CANCEL_FORBIDDEN", "只能撤销自己申请的账号删除计划", 403);
+      if (request.request_type === "household" && rights.role !== "owner") throw new DomainError("HOUSEHOLD_OWNER_REQUIRED", "只有家庭所有者可以撤销家庭删除计划", 403);
+      const cancelled = await client.query<{ new_version: number }>(
+        "SELECT life_data_cancel_deletion($1, $2, $3, $4) AS new_version",
+        [this.scope.householdId, this.scope.userId, requestId, expectedVersion],
+      );
+      const newVersion = Number(cancelled.rows[0]?.new_version ?? 0);
+      if (newVersion === -1) throw new DomainError("DELETION_VERSION_CONFLICT", "删除计划已经变化，请刷新后重试", 409);
+      if (newVersion < 1) throw new DomainError("DELETION_NOT_CANCELLABLE", "删除计划不存在、已进入处理或已经结束", 409);
+      await this.writeAudit(client, "data_deletion.cancel", "data_deletion_request", requestId, { version: newVersion });
+      return this.getDataRightsWithClient(client);
+    });
+  }
+
   private async getTopicWithClient(client: DbClient, topicId: string): Promise<FamilyTopicDetail | null> {
     const topicResult = await client.query<TopicRow>(`${topicSelect}`, [this.scope.householdId, topicId]);
     const row = topicResult.rows[0];
@@ -421,6 +516,65 @@ export class SqlFamilyRepository implements FamilyRepository {
         granted_at: row.granted_at ? String(row.granted_at) : null,
         revoked_at: row.revoked_at ? String(row.revoked_at) : null,
         updated_at: row.updated_at ? String(row.updated_at) : null,
+      })),
+    };
+  }
+
+  private async getDataRightsWithClient(client: DbClient): Promise<DataRightsSummary> {
+    const member = await client.query<{ role: FamilyMemberRole; can_export: boolean | null; permission_revoked_at: string | null }>(
+      `SELECT hm.role, fp.can_export, fp.revoked_at::text AS permission_revoked_at
+         FROM household_member hm
+         LEFT JOIN financial_permission fp
+           ON fp.household_id = hm.household_id AND fp.user_id = hm.user_id
+        WHERE hm.household_id = $1 AND hm.user_id = $2 AND hm.status = 'active'`,
+      [this.scope.householdId, this.scope.userId],
+    );
+    const row = member.rows[0];
+    if (!row) throw new DomainError("HOUSEHOLD_MEMBER_REQUIRED", "当前账号不是有效的家庭成员", 403);
+    const financeExport = row.role === "owner"
+      || (row.can_export === null ? row.role === "adult" : row.can_export === true && row.permission_revoked_at === null);
+    const sensitiveExport = await hasSensitivePermission(client, this.scope, "household_export");
+    const requests = await client.query<Record<string, unknown>>(
+      `SELECT id::text AS id, request_type, status, version,
+              requested_at::text AS requested_at, execute_after::text AS execute_after,
+              cancelled_at::text AS cancelled_at, completed_at::text AS completed_at, scope_summary
+         FROM data_deletion_request
+        WHERE household_id = $1
+          AND (request_type = 'household' OR requested_by = $2)
+        ORDER BY requested_at DESC
+        LIMIT 12`,
+      [this.scope.householdId, this.scope.userId],
+    );
+    return {
+      role: row.role,
+      policies: { household_isolation: true, ai_isolation: true, original_bill_retention_days: 365, original_bill_notice_days: 30 },
+      exports: {
+        finance_ledger: {
+          available: financeExport && sensitiveExport,
+          status: financeExport && sensitiveExport ? "available" : "permission_required",
+          route: "/finance",
+          description: "现有财务导出会生成家庭隔离、短时有效且带审计的 CSV 文件。",
+        },
+        household_archive: {
+          available: false,
+          status: "planned",
+          description: "家庭主题、饮食行为、媒体与 AI 记忆的全量归档尚未开放，不能用财务 CSV 冒充。",
+        },
+      },
+      deletion: {
+        account: { available: row.role !== "owner", wait_days: 7, consequence: "等待期后停用登录、移除成员关系并清除个人 AI 记忆；家庭内容以匿名作者保留。" },
+        household: { available: row.role === "owner", wait_days: 14, consequence: "等待期后异步删除家庭业务数据、原始文件与 AI 记忆；最小删除审计和未到期备份按合规策略处理。" },
+      },
+      requests: requests.rows.map((item) => ({
+        id: String(item.id),
+        request_type: String(item.request_type) as DataDeletionRequestType,
+        status: String(item.status) as DataDeletionRequest["status"],
+        version: Number(item.version),
+        requested_at: String(item.requested_at),
+        execute_after: String(item.execute_after),
+        cancelled_at: item.cancelled_at ? String(item.cancelled_at) : null,
+        completed_at: item.completed_at ? String(item.completed_at) : null,
+        scope_summary: asPayload(item.scope_summary),
       })),
     };
   }

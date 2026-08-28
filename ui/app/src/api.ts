@@ -23,6 +23,20 @@ export type CreatedFamilyInvitation = FamilyInvitation & { invite_code: string }
 export type SensitiveCapability = "ai_food_recommendation" | "ai_topic_summary" | "ai_finance_insight" | "ai_cooking_assistant" | "ai_memory_personalization" | "media_original" | "household_export";
 export type SensitivePermissionItem = { capability: SensitiveCapability; enabled: boolean; explicit: boolean; version: number; granted_at: string | null; revoked_at: string | null; updated_at: string | null };
 export type MemberSensitivePermissionSnapshot = { user_id: string; email: string; role: FamilyMemberRole; permissions: SensitivePermissionItem[] };
+export type DataDeletionRequest = { id: string; request_type: "account" | "household"; status: "scheduled" | "processing" | "cancelled" | "completed" | "failed"; version: number; requested_at: string; execute_after: string; cancelled_at: string | null; completed_at: string | null; scope_summary: Record<string, unknown> };
+export type DataRightsSummary = {
+  role: FamilyMemberRole;
+  policies: { household_isolation: true; ai_isolation: true; original_bill_retention_days: 365; original_bill_notice_days: 30 };
+  exports: {
+    finance_ledger: { available: boolean; status: "available" | "permission_required"; route: "/finance"; description: string };
+    household_archive: { available: false; status: "planned"; description: string };
+  };
+  deletion: {
+    account: { available: boolean; wait_days: 7; consequence: string };
+    household: { available: boolean; wait_days: 14; consequence: string };
+  };
+  requests: DataDeletionRequest[];
+};
 export type HouseholdInvitationPreview = { status: "active" | "expired" | "revoked" | "used"; invitationId: string; householdId: string; householdName: string; inviterEmail: string; role: Exclude<FamilyMemberRole, "owner">; expiresAt: string };
 
 export type FinanceDrilldownRef = { type: string; filter_id: string; filters: Record<string, string> };
@@ -223,6 +237,12 @@ export const familyApi = {
   updateMemberRole: (userId: string, role: Exclude<FamilyMemberRole, "owner">) => request<FamilyMember>(`/api/family/members/${userId}/role`, { method: "PATCH", body: JSON.stringify({ role }) }),
   getSensitivePermissions: (userId: string) => request<MemberSensitivePermissionSnapshot>(`/api/family/members/${userId}/sensitive-permissions`),
   updateSensitivePermission: (userId: string, capability: SensitiveCapability, enabled: boolean, expectedVersion: number) => request<MemberSensitivePermissionSnapshot>(`/api/family/members/${userId}/sensitive-permissions`, { method: "PATCH", body: JSON.stringify({ capability, enabled, expected_version: expectedVersion }) }),
+};
+
+export const dataRightsApi = {
+  getSummary: () => request<DataRightsSummary>("/api/data-rights"),
+  scheduleDeletion: (requestType: DataDeletionRequest["request_type"]) => request<DataRightsSummary>("/api/data-rights/deletion-requests", { method: "POST", body: JSON.stringify({ request_type: requestType }) }),
+  cancelDeletion: (requestId: string, expectedVersion: number) => request<DataRightsSummary>(`/api/data-rights/deletion-requests/${requestId}/cancel`, { method: "POST", body: JSON.stringify({ expected_version: expectedVersion }) }),
 };
 
 export const authApi = {

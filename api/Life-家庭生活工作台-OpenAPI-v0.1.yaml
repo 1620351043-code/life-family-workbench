@@ -15,6 +15,7 @@ security:
   - cookieAuth: []
 tags:
   - name: Identity
+  - name: Data Rights
   - name: Family Space
   - name: AI
   - name: Finance Overview
@@ -1174,6 +1175,73 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '409':
           $ref: '#/components/responses/Conflict'
+  /api/data-rights:
+    get:
+      tags: [Data Rights]
+      operationId: getDataRights
+      summary: 获取当前账号的数据保留、导出和删除边界
+      description: 返回服务端生效的 365 天原始账单保留期、现有导出能力、删除等待期以及当前可见的删除计划。
+      responses:
+        '200':
+          description: 当前家庭隔离的数据权利说明
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataRightsSummary'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /api/data-rights/deletion-requests:
+    post:
+      tags: [Data Rights]
+      operationId: scheduleDataDeletion
+      summary: 创建带等待期、可撤销的账号或家庭删除计划
+      description: 账号删除等待 7 天且家庭所有者不可单独申请；家庭删除等待 14 天且仅所有者可申请。本接口不执行同步物理删除。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScheduleDeletionRequest'
+      responses:
+        '201':
+          description: 删除计划已创建并写入审计
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataRightsSummary'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/data-rights/deletion-requests/{requestId}/cancel:
+    post:
+      tags: [Data Rights]
+      operationId: cancelDataDeletion
+      summary: 在处理开始前撤销删除计划
+      parameters:
+        - name: requestId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CancelDeletionRequest'
+      responses:
+        '200':
+          description: 删除计划已撤销并写入审计
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataRightsSummary'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
   /api/family/topics:
     get:
       tags: [Family Space]
@@ -2009,6 +2077,130 @@ components:
         expected_version:
           type: integer
           minimum: 0
+    DataDeletionRequest:
+      type: object
+      required: [id, request_type, status, version, requested_at, execute_after, cancelled_at, completed_at, scope_summary]
+      properties:
+        id:
+          type: string
+          format: uuid
+        request_type:
+          type: string
+          enum: [account, household]
+        status:
+          type: string
+          enum: [scheduled, processing, cancelled, completed, failed]
+        version:
+          type: integer
+          minimum: 1
+        requested_at:
+          type: string
+          format: date-time
+        execute_after:
+          type: string
+          format: date-time
+        cancelled_at:
+          type: string
+          format: date-time
+          nullable: true
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+        scope_summary:
+          type: object
+          additionalProperties: true
+    DataRightsSummary:
+      type: object
+      required: [role, policies, exports, deletion, requests]
+      properties:
+        role:
+          type: string
+          enum: [owner, adult, child, guest]
+        policies:
+          type: object
+          required: [household_isolation, ai_isolation, original_bill_retention_days, original_bill_notice_days]
+          properties:
+            household_isolation:
+              type: boolean
+              const: true
+            ai_isolation:
+              type: boolean
+              const: true
+            original_bill_retention_days:
+              type: integer
+              const: 365
+            original_bill_notice_days:
+              type: integer
+              const: 30
+        exports:
+          type: object
+          required: [finance_ledger, household_archive]
+          properties:
+            finance_ledger:
+              type: object
+              required: [available, status, route, description]
+              properties:
+                available:
+                  type: boolean
+                status:
+                  type: string
+                  enum: [available, permission_required]
+                route:
+                  type: string
+                  const: /finance
+                description:
+                  type: string
+            household_archive:
+              type: object
+              required: [available, status, description]
+              properties:
+                available:
+                  type: boolean
+                  const: false
+                status:
+                  type: string
+                  const: planned
+                description:
+                  type: string
+        deletion:
+          type: object
+          required: [account, household]
+          properties:
+            account:
+              $ref: '#/components/schemas/DeletionPolicy'
+            household:
+              $ref: '#/components/schemas/DeletionPolicy'
+        requests:
+          type: array
+          items:
+            $ref: '#/components/schemas/DataDeletionRequest'
+    DeletionPolicy:
+      type: object
+      required: [available, wait_days, consequence]
+      properties:
+        available:
+          type: boolean
+        wait_days:
+          type: integer
+          minimum: 1
+          maximum: 30
+        consequence:
+          type: string
+    ScheduleDeletionRequest:
+      type: object
+      required: [request_type]
+      properties:
+        request_type:
+          type: string
+          enum: [account, household]
+    CancelDeletionRequest:
+      type: object
+      required: [expected_version]
+      properties:
+        expected_version:
+          type: integer
+          minimum: 1
     UpdateFamilyMemberRoleRequest:
       type: object
       required: [role]

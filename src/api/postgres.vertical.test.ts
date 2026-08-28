@@ -74,7 +74,7 @@ function splitSql(input: string): string[] {
 }
 
 async function applyMigrations(db: PGlite) {
-  for (const file of ["db/migrations/0001_life_core_finance.sql", "db/migrations/0002_finance_import_state.sql", "db/migrations/0003_life_app_privileges.sql", "db/migrations/0004_family_space_ai.sql", "db/migrations/0005_finance_ledger_foundation.sql", "db/migrations/0006_finance_management_foundation.sql", "db/migrations/0007_finance_permissions.sql", "db/migrations/0008_finance_ai.sql", "db/migrations/0009_finance_production_hardening.sql", "db/migrations/0010_auth_sessions.sql", "db/migrations/0011_password_reset.sql", "db/migrations/0012_household_invitations.sql", "db/migrations/0013_member_sensitive_permissions.sql"]) {
+  for (const file of ["db/migrations/0001_life_core_finance.sql", "db/migrations/0002_finance_import_state.sql", "db/migrations/0003_life_app_privileges.sql", "db/migrations/0004_family_space_ai.sql", "db/migrations/0005_finance_ledger_foundation.sql", "db/migrations/0006_finance_management_foundation.sql", "db/migrations/0007_finance_permissions.sql", "db/migrations/0008_finance_ai.sql", "db/migrations/0009_finance_production_hardening.sql", "db/migrations/0010_auth_sessions.sql", "db/migrations/0011_password_reset.sql", "db/migrations/0012_household_invitations.sql", "db/migrations/0013_member_sensitive_permissions.sql", "db/migrations/0014_data_rights_deletion_requests.sql"]) {
     let sql = await readFile(file, "utf8");
     sql = sql.replace("CREATE EXTENSION IF NOT EXISTS pgcrypto;", "-- pgcrypto is not bundled in PGlite").replaceAll("DEFAULT gen_random_uuid()", "");
     for (const statement of splitSql(sql)) await db.query(statement);
@@ -870,6 +870,72 @@ describe("PostgreSQL finance vertical slice", () => {
     const connectionTest = await app.inject({ method: "POST", url: "/api/finance/ai/connection/test" });
     expect(connectionTest.statusCode).toBe(503);
     expect(connectionTest.json().code).toBe("AI_CONNECTION_SECRET_MISSING");
+  });
+
+  it("discloses data retention and export boundaries while scheduling reversible tenant-scoped deletion plans", async () => {
+    const ownerRights = await app.inject({ method: "GET", url: "/api/data-rights" });
+    expect(ownerRights.statusCode).toBe(200);
+    expect(ownerRights.json().policies.original_bill_retention_days).toBe(365);
+    expect(ownerRights.json().exports.finance_ledger.available).toBe(true);
+    expect(ownerRights.json().exports.household_archive).toMatchObject({ available: false, status: "planned" });
+    expect(ownerRights.json().deletion).toMatchObject({ account: { available: false, wait_days: 7 }, household: { available: true, wait_days: 14 } });
+
+    const ownerAccountDenied = await app.inject({ method: "POST", url: "/api/data-rights/deletion-requests", payload: { request_type: "account" } });
+    expect(ownerAccountDenied.statusCode).toBe(409);
+    expect(ownerAccountDenied.json().code).toBe("OWNER_ACCOUNT_DELETION_REQUIRES_HOUSEHOLD");
+
+    const householdScheduled = await app.inject({ method: "POST", url: "/api/data-rights/deletion-requests", payload: { request_type: "household" } });
+    expect(householdScheduled.statusCode).toBe(201);
+    const householdRequest = householdScheduled.json().requests[0];
+    expect(householdRequest).toMatchObject({ request_type: "household", status: "scheduled", version: 1 });
+    expect(new Date(householdRequest.execute_after).getTime() - Date.now()).toBeGreaterThan(13 * 24 * 60 * 60 * 1000);
+    expect(householdRequest.scope_summary.ai_memory_and_indexes).toBe("delete");
+
+    const duplicate = await app.inject({ method: "POST", url: "/api/data-rights/deletion-requests", payload: { request_type: "household" } });
+    expect(duplicate.statusCode).toBe(409);
+    expect(duplicate.json().code).toBe("DELETION_ALREADY_SCHEDULED");
+    const staleCancel = await app.inject({ method: "POST", url: `/api/data-rights/deletion-requests/${householdRequest.id}/cancel`, payload: { expected_version: 9 } });
+    expect(staleCancel.statusCode).toBe(409);
+    expect(staleCancel.json().code).toBe("DELETION_VERSION_CONFLICT");
+    const householdCancelled = await app.inject({ method: "POST", url: `/api/data-rights/deletion-requests/${householdRequest.id}/cancel`, payload: { expected_version: 1 } });
+    expect(householdCancelled.statusCode).toBe(200);
+    expect(householdCancelled.json().requests[0]).toMatchObject({ status: "cancelled", version: 2 });
+
+    await db.query("RESET ROLE");
+    await db.query("INSERT INTO app_user (id, email, password_hash) VALUES ($1, $2, 'disabled-for-scope-test')", [userC, "child-data-rights@example.invalid"]);
+    await db.query("INSERT INTO household_member (id, household_id, user_id, role) VALUES ($1, $2, $3, 'child')", [memberC, householdA, userC]);
+    await db.query("SET ROLE life_app");
+    const childScope = { householdId: householdA, userId: userC };
+    const childApp = buildServer({ resolveScope: () => childScope, familyFactory: () => new SqlFamilyRepository(pool, childScope) });
+    const childRights = await childApp.inject({ method: "GET", url: "/api/data-rights" });
+    expect(childRights.statusCode).toBe(200);
+    expect(childRights.json().exports.finance_ledger.available).toBe(false);
+    expect(childRights.json().deletion).toMatchObject({ account: { available: true }, household: { available: false } });
+    const childHouseholdDenied = await childApp.inject({ method: "POST", url: "/api/data-rights/deletion-requests", payload: { request_type: "household" } });
+    expect(childHouseholdDenied.statusCode).toBe(403);
+    const accountScheduled = await childApp.inject({ method: "POST", url: "/api/data-rights/deletion-requests", payload: { request_type: "account" } });
+    expect(accountScheduled.statusCode).toBe(201);
+    const accountRequest = accountScheduled.json().requests.find((item: { request_type: string; status: string }) => item.request_type === "account" && item.status === "scheduled");
+    expect(accountRequest).toBeTruthy();
+    expect(new Date(accountRequest.execute_after).getTime() - Date.now()).toBeGreaterThan(6 * 24 * 60 * 60 * 1000);
+    const ownerCannotCancelMemberAccount = await app.inject({ method: "POST", url: `/api/data-rights/deletion-requests/${accountRequest.id}/cancel`, payload: { expected_version: 1 } });
+    expect(ownerCannotCancelMemberAccount.statusCode).toBe(403);
+    expect(ownerCannotCancelMemberAccount.json().code).toBe("DELETION_CANCEL_FORBIDDEN");
+    const accountCancelled = await childApp.inject({ method: "POST", url: `/api/data-rights/deletion-requests/${accountRequest.id}/cancel`, payload: { expected_version: 1 } });
+    expect(accountCancelled.statusCode).toBe(200);
+    expect(accountCancelled.json().requests.find((item: { id: string }) => item.id === accountRequest.id).status).toBe("cancelled");
+
+    const householdBApp = buildServer({ resolveScope: () => ({ householdId: householdB, userId: userB }), familyFactory: () => new SqlFamilyRepository(pool, { householdId: householdB, userId: userB }) });
+    const isolated = await householdBApp.inject({ method: "GET", url: "/api/data-rights" });
+    expect(isolated.statusCode).toBe(200);
+    expect(isolated.json().requests).toHaveLength(0);
+    await childApp.close();
+    await householdBApp.close();
+
+    await db.query("RESET ROLE");
+    const audit = await db.query<{ action: string }>("SELECT action FROM audit_log WHERE household_id = $1 AND action LIKE 'data_deletion.%' ORDER BY created_at", [householdA]);
+    expect(audit.rows.map((row) => row.action)).toEqual(expect.arrayContaining(["data_deletion.household.schedule", "data_deletion.account.schedule", "data_deletion.cancel"]));
+    await db.query("SET ROLE life_app");
   });
 
   it("runs the family topic, source-linked AI summary, approval and audit flow", async () => {

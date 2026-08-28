@@ -70,6 +70,7 @@ const migrationFiles = [
   'migrations/0011_password_reset.sql',
   'migrations/0012_household_invitations.sql',
   'migrations/0013_member_sensitive_permissions.sql',
+  'migrations/0014_data_rights_deletion_requests.sql',
 ];
 let statements = [];
 for (const file of migrationFiles) {
@@ -92,14 +93,14 @@ for (const [index, statement] of statements.entries()) {
 
 if (!process.exitCode) {
   const tables = await db.query(
-    "SELECT count(*)::int AS count FROM pg_class WHERE relkind = 'r' AND relname IN ('app_user', 'household_member', 'household_invitation', 'member_sensitive_permission', 'financial_account', 'financial_source', 'import_batch', 'import_row', 'source_record', 'reconciliation_group', 'transaction_link', 'ledger_transaction', 'ledger_entry', 'category', 'budget', 'budget_period', 'physical_asset', 'asset_event', 'finance_drilldown_filter', 'financial_permission', 'family_topic', 'family_topic_comment', 'ai_memory_document', 'ai_insight', 'ai_action_proposal', 'ai_action_execution', 'finance_export_job', 'household_ai_connection', 'ai_memory_artifact')",
+    "SELECT count(*)::int AS count FROM pg_class WHERE relkind = 'r' AND relname IN ('app_user', 'household_member', 'household_invitation', 'member_sensitive_permission', 'data_deletion_request', 'financial_account', 'financial_source', 'import_batch', 'import_row', 'source_record', 'reconciliation_group', 'transaction_link', 'ledger_transaction', 'ledger_entry', 'category', 'budget', 'budget_period', 'physical_asset', 'asset_event', 'finance_drilldown_filter', 'financial_permission', 'family_topic', 'family_topic_comment', 'ai_memory_document', 'ai_insight', 'ai_action_proposal', 'ai_action_execution', 'finance_export_job', 'household_ai_connection', 'ai_memory_artifact')",
   );
   const authTables = await db.query("SELECT count(*)::int AS count FROM pg_class WHERE relkind = 'r' AND relname IN ('user_session', 'password_reset_token')");
   const policies = await db.query("SELECT count(*)::int AS count FROM pg_policies WHERE schemaname = 'public'");
-  if (tables.rows[0].count !== 29) throw new Error('expected 29 protected tables, got ' + tables.rows[0].count);
+  if (tables.rows[0].count !== 30) throw new Error('expected 30 protected tables, got ' + tables.rows[0].count);
   if (authTables.rows[0].count !== 2) throw new Error('expected user_session and password_reset_token tables');
-  if (policies.rows[0].count !== 30) throw new Error('expected 30 RLS policies, got ' + policies.rows[0].count);
-  console.log('migration smoke: PASS (' + statements.length + ' statements, 29 protected tables, 30 policies, app role grants)');
+  if (policies.rows[0].count !== 31) throw new Error('expected 31 RLS policies, got ' + policies.rows[0].count);
+  console.log('migration smoke: PASS (' + statements.length + ' statements, 30 protected tables, 31 policies, app role grants)');
 }
 
 await db.close();
