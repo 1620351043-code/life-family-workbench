@@ -57,5 +57,8 @@ jobs:
       - name: Migration smoke test
         run: npm run migration:smoke
 
+      - name: Staging auth black-box contract
+        run: npm run staging:auth-contract
+
       - name: Web production build
         run: npm run web:build

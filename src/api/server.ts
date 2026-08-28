@@ -14,6 +14,7 @@ import { SqlAuthStore, type AuthSession, type AuthStore } from "./auth.js";
 import { InMemoryAuthAttemptLimiter, type AuthAttemptLimiter, type AuthRateLimitInput } from "./auth-rate-limit.js";
 import { createPasswordResetDeliveryFromEnv, type PasswordResetDelivery } from "./password-reset-delivery.js";
 import { sensitiveCapabilities } from "./sensitive-permissions.js";
+import { isProductionDeployment, isSecureDeployment } from "./deployment-environment.js";
 
 const sourceTypes = ["bank", "alipay", "wechat", "bookkeeping_app", "other"] as const;
 const overviewQuerySchema = z.object({ start: z.string().date(), end: z.string().date(), granularity: z.enum(["day", "week", "month", "quarter"]).default("day") });
@@ -101,7 +102,7 @@ function sessionCookieName() {
 }
 
 function setSessionCookie(reply: { header(name: string, value: string): unknown }, token: string | null) {
-  const secure = process.env.NODE_ENV === "production" || process.env.LIFE_SESSION_COOKIE_SECURE === "true";
+  const secure = isSecureDeployment() || process.env.LIFE_SESSION_COOKIE_SECURE === "true";
   const suffix = secure ? "; Secure" : "";
   const maxAge = token ? "; Max-Age=2592000" : "; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT";
   reply.header("set-cookie", `${sessionCookieName()}=${token ? encodeURIComponent(token) : ""}; Path=/; HttpOnly; SameSite=Lax${suffix}${maxAge}`);
@@ -146,11 +147,15 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
   const authAttemptLimiter = options.authAttemptLimiter ?? new InMemoryAuthAttemptLimiter();
   const passwordResetDelivery = options.passwordResetDelivery;
   const resolveScope = options.resolveScope ?? defaultScopeResolver;
-  if (process.env.NODE_ENV === "production" && !authStore && !options.resolveScope) throw new Error("生产环境必须配置正式会话 resolver 或 authStore，禁止使用开发 scope");
-  const importObjectStore: ImportObjectStore = options.importObjectStore ?? (process.env.NODE_ENV === "production" ? createProductionCosObjectStoreFromEnv() : new LocalImportObjectStore());
-  if (process.env.NODE_ENV === "production" && !importObjectStore.production) throw new Error("生产环境必须使用腾讯云 COS 私有桶适配器，禁止回退到本地账单存储");
+  if (isSecureDeployment() && !authStore && !options.resolveScope) throw new Error("staging/production 必须配置正式会话 resolver 或 authStore，禁止使用开发 scope");
+  const importObjectStore: ImportObjectStore = options.importObjectStore ?? (isProductionDeployment() ? createProductionCosObjectStoreFromEnv() : new LocalImportObjectStore());
+  if (isProductionDeployment() && !importObjectStore.production) throw new Error("生产环境必须使用腾讯云 COS 私有桶适配器，禁止回退到本地账单存储");
   const importParser = options.importParser ?? new LocalFinanceImportParser(importObjectStore);
-  const app = Fastify({ logger: process.env.NODE_ENV === "production", bodyLimit: 50 * 1024 * 1024 });
+  const app = Fastify({
+    logger: isSecureDeployment(),
+    bodyLimit: 50 * 1024 * 1024,
+    trustProxy: isSecureDeployment() ? ["127.0.0.1", "::1"] : false,
+  });
   app.addContentTypeParser("application/octet-stream", { parseAs: "buffer" }, (_request, body, done) => done(null, body));
   app.addHook("preHandler", async (request) => {
     if (!request.url.startsWith("/api/")) return;
@@ -919,7 +924,7 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
 if (import.meta.url === `file://${process.argv[1]}`) {
   const databaseUrl = process.env.DATABASE_URL;
   const pool = databaseUrl ? new Pool({ connectionString: databaseUrl }) : null;
-  const importObjectStore: ImportObjectStore = process.env.NODE_ENV === "production" ? createProductionCosObjectStoreFromEnv() : new LocalImportObjectStore();
+  const importObjectStore: ImportObjectStore = isProductionDeployment() ? createProductionCosObjectStoreFromEnv() : new LocalImportObjectStore();
   const authStore = pool ? new SqlAuthStore(pool as unknown as DbPool) : undefined;
   const passwordResetDelivery = createPasswordResetDeliveryFromEnv();
   const app = buildServer({

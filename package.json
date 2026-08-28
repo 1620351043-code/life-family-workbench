@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "api:dev": "tsx src/api/server.ts",
+    "api:start": "tsx src/api/server.ts",
     "api:test": "vitest run",
     "api:typecheck": "tsc --noEmit",
     "openapi:validate": "node scripts/validate-openapi.mjs",
@@ -13,6 +14,9 @@
     "cos:live-smoke": "NODE_ENV=production LIFE_COS_LIVE_SMOKE=true tsx scripts/production_preflight.ts",
     "db:migrate": "tsx scripts/migrate_postgres.ts",
     "production:preflight": "tsx scripts/production_preflight.ts",
+    "staging:auth-preflight": "tsx scripts/staging_auth_preflight.ts",
+    "staging:auth-contract": "node scripts/staging_auth_contract_test.mjs",
+    "staging:auth-e2e": "node scripts/staging_auth_e2e.mjs",
     "finance:export-worker": "tsx scripts/finance_export_worker.ts",
     "finance:retention-worker": "tsx scripts/finance_retention_worker.ts",
     "web:dev": "vite --config ui/app/vite.config.ts",

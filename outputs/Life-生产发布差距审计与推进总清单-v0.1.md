@@ -95,7 +95,7 @@
 | E-001 | Web TypeScript | `DONE` | `npm run web:typecheck` 通过 |
 | E-002 | API TypeScript | `DONE` | `npm run api:typecheck` 通过 |
 | E-003 | Web 生产构建 | `DONE` | `npm run web:build` 通过；当前 JS/CSS 产物约 515KB（未压缩） |
-| E-004 | API 自动化测试 | `DONE` | 3 个测试文件、19/19 测试通过 |
+| E-004 | API 自动化测试 | `DONE` | 4 个测试文件、22/22 测试通过；另有 B-011 staging 黑盒契约 8 项 |
 | E-005 | OpenAPI 校验 | `DONE` | OpenAPI 3.1.0；61 paths、88 schemas |
 | E-006 | 迁移烟测 | `DONE` | 235 statements、30 protected tables、31 policies，另含会话与密码重置凭据表 |
 | E-007 | 依赖漏洞审计 | `DONE` | 官方 npm registry 返回 0 vulnerabilities |
@@ -252,7 +252,7 @@ npm run production:preflight
 | B-008 | 家庭成员列表和角色 | `DONE` | owner/adult/child/guest 可查看；只有 owner 可管理非 owner 角色，角色变化重置显式财务授权并写审计 |
 | B-009 | 儿童及成员敏感权限 | `DONE` | 7 项 AI/家庭原图/家庭导出权限逐项管理；默认拒绝、owner 保护、版本冲突、审计、运行时双权限和角色撤权均有数据库/API/移动端证据 |
 | B-010 | 账户/家庭删除与数据导出说明 | `DONE` | 365 天保留、导出边界、7/14 天删除等待期、输入确认、可撤销计划、版本冲突、审计和三档移动端 E2E 已闭环；物理删除执行器不在本切片 |
-| B-011 | 正式身份移动端 E2E | `PARTIAL` | 本地 PGlite + SqlAuthStore + HttpOnly Cookie 已通过注册→退出→登录→`/api/me`→财务回归→退出；目标 PostgreSQL + HTTPS 尚未验证 |
+| B-011 | 正式身份移动端 E2E | `PARTIAL / LIVE_BLOCKED` | staging 安全环境、PostgreSQL 预检、Caddy/systemd 模板、真实邮箱黑盒 E2E 和 CI 契约已完成；目标服务器主机指纹待腾讯云控制台核验，PostgreSQL + HTTPS + 邮件送达尚未 live 验证 |
 
 ### 7.3 C：家庭空间
 
@@ -593,7 +593,7 @@ npm run production:preflight
 | 风险 | 等级 | 当前缓解措施 | 下一动作 |
 |---|---|---|---|
 | 无 Git 提交和回滚点 | 已关闭 | Git、CI、Tag 和回滚清单已建立 | 在 staging 完成真实回滚演练 |
-| 正式身份尚未在目标环境闭环 | P0 | B-004～B-009 本地真实 Cookie E2E 已完成 | 完成 B-010～B-011，并在 PostgreSQL + HTTPS + 真实邮件交付复验 |
+| 正式身份尚未在目标环境闭环 | P0 | B-004～B-010 本地真实 Cookie E2E、B-011 staging 黑盒工具和部署模板已完成 | 先从腾讯云控制台核实变化后的 SSH 主机指纹，再完成 PostgreSQL + HTTPS + 真实邮件交付复验 |
 | 吃什么使用前端样本数据 | P0 | UI 明确标注来源样本 | 完成 D-005～D-012 |
 | 财务解析同步占用 HTTP | P0 | 120 秒开发代理超时 | 完成 E-114 |
 | 生产 COS 尚未验证 | P0 | 生产 fail-closed | 完成 E-119/I-004 |
@@ -638,3 +638,4 @@ npm run production:preflight
 | v0.11 | 2026-08-27 | 完成一次性家庭邀请、邀请状态、唯一家庭拒绝、成员列表、owner 角色管理、财务授权重置、审计和 430/390/320 移动端 E2E；补充嵌套滚动区溢出检查 | B-007、B-008 `DONE`；B-009、B-010、B-011 继续按序推进 |
 | v0.12 | 2026-08-28 | 完成 7 项成员敏感权限、默认拒绝、owner 保护、乐观并发、审计、AI/导出运行时拦截、角色撤权和三档移动端 E2E；修复权限层与角色层点击拦截 | B-009 `DONE`；下一项 B-010 |
 | v0.13 | 2026-08-28 | 完成数据与安全页面、365 天保留/导出边界、账号 7 天与家庭 14 天删除计划、输入确认、撤销、版本冲突、家庭隔离和三档移动端 E2E；明确物理删除执行器与全量家庭归档未冒充完成 | B-010 `DONE`；下一项 B-011 |
+| v0.14 | 2026-08-28 | 完成 B-011 staging 安全环境、原生 PostgreSQL 身份预检、Caddy/systemd 模板、真实邮箱黑盒 E2E 和 CI 契约；目标服务器端口可达但 SSH 主机指纹变化，未绕过安全校验 | B-011 保持 `PARTIAL / LIVE_BLOCKED`，等待腾讯云控制台可信指纹后继续 live 验收 |

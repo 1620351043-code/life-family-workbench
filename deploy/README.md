@@ -43,3 +43,64 @@ npm run finance:retention-worker
 ## 4. 发布验收
 
 必须实际完成：注册 → 登录 → `/api/me` → 申请密码重置 → 邮件链接 → 更新密码 → 旧会话失效 → 新密码登录 → 财务首页 → 新增记账 → 导入账单 → 表头预览 → 关联审核 → 导出下载 → 退出；再验证跨家庭 Cookie、儿童权限、COS 对象路径、备份恢复和回滚。
+
+## 5. B-011 正式身份 staging 验收
+
+本节只验收原生 PostgreSQL、HTTPS、Secure/HttpOnly Cookie 和真实密码重置交付。腾讯云 COS 私有桶仍按既定决策留在 `E-119/I-004`，不能因为 B-011 通过而标记 COS 或生产发布闸门完成。
+
+### 5.1 先确认服务器身份
+
+如果 SSH 报告主机指纹变化，立即停止。必须从腾讯云控制台登录该实例，在实例终端执行：
+
+```bash
+sudo ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
+```
+
+只有控制台显示的 SHA256 指纹与本地 SSH 返回的指纹完全一致，才可以更新本机 `known_hosts`。不能使用 `StrictHostKeyChecking=no`，也不能仅凭 IP 相同假定服务器身份未变。
+
+### 5.2 staging 配置
+
+1. 为 staging 域名设置 DNS，并让 Caddy 自动取得可信证书；参考 `deploy/life-staging.Caddyfile.example`。
+2. 创建独立的 `life_staging` 数据库、迁移角色和 `life_app` 应用角色；应用角色必须是 `NOSUPERUSER NOBYPASSRLS`。
+3. 使用迁移角色运行全部迁移，再将 `deploy/staging.env.example` 复制到 `/etc/life/staging.env`，替换占位符并设置权限 `0600`。
+4. 使用 `deploy/life-staging.service.example` 启动 API。API 仅监听 `127.0.0.1:3100`，外部流量全部经过 Caddy HTTPS。
+5. 密码重置交付接口必须为 HTTPS，并把邮件真正投递到专用 staging 测试邮箱；不能暴露数据库令牌或增加 `/__e2e` 取令牌接口。
+
+在服务器私有环境中运行：
+
+```bash
+set -a
+. /etc/life/staging.env
+set +a
+npm run staging:auth-preflight
+```
+
+### 5.3 黑盒移动端 E2E
+
+验收机只读取专用测试邮箱。邮箱读取接口必须使用 HTTPS 和 Bearer 鉴权，接收 `recipient`、`after` 查询参数，并返回以下最小结构：
+
+```json
+{
+  "messages": [
+    {
+      "recipient": "life-e2e+unique@example.com",
+      "reset_url": "https://staging-life.example.com/?reset_token=REDACTED",
+      "received_at": "2026-08-28T12:00:00Z",
+      "message_id": "optional-id"
+    }
+  ]
+}
+```
+
+运行前在本地私有 shell 注入环境变量，不要写进仓库：
+
+```bash
+export LIFE_E2E_CONFIRM=I_UNDERSTAND_THIS_CREATES_STAGING_DATA
+export LIFE_E2E_BASE_URL=https://staging-life.example.com/
+export LIFE_E2E_EMAIL_TEMPLATE='life-e2e+{nonce}@example.com'
+export LIFE_E2E_MAILBOX_ENDPOINT=https://mailbox.example.com/messages/latest
+export LIFE_E2E_MAILBOX_BEARER_TOKEN=REPLACE_ME
+npm run staging:auth-e2e
+```
+
+脚本将真实创建一个带 `B011-` 标记的 staging 家庭，验证 HTTP→HTTPS、HSTS、注册、第二会话、`/api/me`、Secure/HttpOnly/SameSite Cookie、真实重置邮件、旧会话撤销、旧密码失效、新密码登录、财务会话和退出。报告不会写入密码或重置链接；测试数据不允许指向 production。
