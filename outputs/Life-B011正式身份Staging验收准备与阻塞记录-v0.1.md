@@ -41,6 +41,10 @@ PGlite 未暴露认证 `SECURITY DEFINER` 函数所有者无法穿过 `FORCE RLS
 - preflight 新增认证函数必须为 `SECURITY DEFINER` 且所有者能穿过 `FORCE RLS` 的检查；
 - 注册 live 重试通过。
 
+### 3.3 严格 umask 导致静态首页 403
+
+服务器 root 会话使用 `umask 077`，Vite 初次构建因此把 `dist/mobile` 生成成仅 owner 可读，API 正常但 Caddy 首页返回 403。已只对静态发布目录归一化为目录 `0755`、文件 `0644`，私有环境文件继续保持 `0600`；部署说明增加 Caddy 实际可读检查。
+
 ## 4. 已通过的 live 证据
 
 | 检查 | 结果 |

@@ -639,4 +639,4 @@ npm run production:preflight
 | v0.12 | 2026-08-28 | 完成 7 项成员敏感权限、默认拒绝、owner 保护、乐观并发、审计、AI/导出运行时拦截、角色撤权和三档移动端 E2E；修复权限层与角色层点击拦截 | B-009 `DONE`；下一项 B-010 |
 | v0.13 | 2026-08-28 | 完成数据与安全页面、365 天保留/导出边界、账号 7 天与家庭 14 天删除计划、输入确认、撤销、版本冲突、家庭隔离和三档移动端 E2E；明确物理删除执行器与全量家庭归档未冒充完成 | B-010 `DONE`；下一项 B-011 |
 | v0.14 | 2026-08-28 | 完成 B-011 staging 安全环境、原生 PostgreSQL 身份预检、Caddy/systemd 模板、真实邮箱黑盒 E2E 和 CI 契约；目标服务器端口可达但 SSH 主机指纹变化，未绕过安全校验 | B-011 保持 `PARTIAL / LIVE_BLOCKED`，等待腾讯云控制台可信指纹后继续 live 验收 |
-| v0.15 | 2026-08-29 | 完成主机指纹核验、PostgreSQL 16.15、14 项迁移、31 张 FORCE RLS 表、独立 systemd 服务、`life.wbutterfly.cn` 可信 HTTPS 和真实移动端注册/登录/Cookie/财务/退出；修复 Caddy SPA 抢占 API 与认证函数所有者被 FORCE RLS 阻断问题 | B-011 更新为 `PARTIAL / MAIL_DELIVERY_BLOCKED`，只剩真实密码重置邮件送达闭环 |
+| v0.15 | 2026-08-29 | 完成主机指纹核验、PostgreSQL 16.15、14 项迁移、31 张 FORCE RLS 表、独立 systemd 服务、`life.wbutterfly.cn` 可信 HTTPS 和真实移动端注册/登录/Cookie/财务/退出；修复 Caddy SPA 抢占 API、认证函数所有者被 FORCE RLS 阻断及严格 umask 导致静态首页 403 | B-011 更新为 `PARTIAL / MAIL_DELIVERY_BLOCKED`，只剩真实密码重置邮件送达闭环 |

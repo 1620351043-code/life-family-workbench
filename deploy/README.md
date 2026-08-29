@@ -66,6 +66,15 @@ sudo ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
 4. 使用 `deploy/life-staging.service.example` 启动 API。API 仅监听 `127.0.0.1:3100`，外部流量全部经过 Caddy HTTPS。
 5. 密码重置交付接口必须为 HTTPS，并把邮件真正投递到专用 staging 测试邮箱；不能暴露数据库令牌或增加 `/__e2e` 取令牌接口。
 
+服务器构建通常运行在严格 `umask 077` 下。`npm run web:build` 后必须只把静态发布目录归一化为 Caddy 可读，不能放宽私有环境文件或整个 release：
+
+```bash
+chmod 0755 /srv/life/releases/<commit>/dist
+find /srv/life/releases/<commit>/dist/mobile -type d -exec chmod 0755 {} +
+find /srv/life/releases/<commit>/dist/mobile -type f -exec chmod 0644 {} +
+sudo -u caddy test -r /srv/life/releases/<commit>/dist/mobile/index.html
+```
+
 在服务器私有环境中运行：
 
 ```bash
