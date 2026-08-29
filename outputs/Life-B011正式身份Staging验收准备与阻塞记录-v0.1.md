@@ -1,73 +1,82 @@
 # Life B-011 正式身份 Staging 验收准备与阻塞记录 v0.1
 
-日期：2026-08-28
+日期：2026-08-29
 
-状态：`PARTIAL / LIVE_BLOCKED`
+状态：`PARTIAL / MAIL_DELIVERY_BLOCKED`
 
 适用范围：原生 PostgreSQL、HTTPS、正式 Cookie、真实密码重置交付的移动端黑盒 E2E
 
 ## 1. 当前结论
 
-B-011 的仓库侧验收能力已经补齐，但目标环境实证尚未完成，因此不能标记 `DONE`。当前唯一优先安全阻塞是目标轻量服务器的 SSH 主机指纹与本机历史记录不一致；在腾讯云控制台完成指纹核验前，不允许绕过校验、修改 `known_hosts` 或部署代码。
+B-011 已从“服务器不可进入”推进到“真实 PostgreSQL、HTTPS、注册、登录、正式 Cookie、财务身份态和退出均 live 通过”。当前只剩真实密码重置邮件交付与专用测试邮箱读取接口没有配置，因此仍不能标记 `DONE`，也不能创建生产发布 Tag。
 
-腾讯云 COS 私有桶不属于本切片。staging 继续使用隔离的本地对象目录，只用于身份链路验收；这不关闭 `E-119/I-004`。
+腾讯云 COS 私有桶不属于本切片。staging 继续使用 `/var/lib/life/staging-imports` 隔离目录；这不关闭 `E-119/I-004`。
 
-## 2. 已完成的仓库能力
+## 2. 目标环境事实
 
-- 新增 `LIFE_DEPLOYMENT_ENV=staging` 安全环境：
-  - staging 和 production 都强制 Secure Cookie、正式会话和 HTTPS 密码重置地址；
-  - 只信任本机 Caddy 反向代理提供的客户端地址，避免外部伪造转发头；
-  - 只有 production 强制腾讯云 COS，避免把此前明确跳过的私有桶适配混入 B-011。
-- 新增 `npm run staging:auth-preflight`：
-  - 验证真实 PostgreSQL 版本；
-  - 验证应用角色为 `NOSUPERUSER NOBYPASSRLS`；
-  - 验证认证、会话、密码重置和数据权利表/函数；
-  - 验证 HTTPS 公开地址、HTTPS 交付 Endpoint 和 Secure Cookie 配置。
-- 新增 `npm run staging:auth-e2e` 黑盒验收：
-  - 不读取数据库中的原始令牌；
-  - 不使用 `/__e2e` 调试接口；
-  - 只通过受 Bearer 保护的 HTTPS 测试邮箱读取接口取得真实送达的重置链接；
-  - 验证 HTTP→HTTPS、HSTS、注册、第二会话、`/api/me`、Secure/HttpOnly/SameSite Cookie、重置邮件、旧会话撤销、旧密码失效、新密码登录、财务会话和退出；
-  - 报告不落盘密码、Cookie 值或重置链接。
-- 新增 Caddy、systemd 和 staging 私有环境模板，API 只监听 `127.0.0.1:3100`。
-- CI 新增 `staging:auth-contract`，防止 HTTPS、邮箱响应和 Cookie 契约漂移。
+- 主机：腾讯云 Ubuntu 24.04.4 LTS，服务器指纹已在控制台核对为 `SHA256:m6Ze3jDXTijo9E67jlpNt8E+iWgPD0GjhGzAdI2ISbM`。
+- Web：Caddy 2.11.4，现有 `wbutterfly.cn` 祭文站保持独立，Life 使用 `https://life.wbutterfly.cn/`。
+- TLS：Let's Encrypt 可信证书已签发；HTTP 返回 308 到 HTTPS；HSTS、安全头和 SPA 静态资源已生效。
+- API：`life-staging.service` 仅监听 `127.0.0.1:3100`，外部只经 Caddy HTTPS 访问。
+- 数据库：PostgreSQL 16.15；`life_staging` 独立数据库；14 个迁移全部应用；31 张表启用 `FORCE RLS`。
+- 角色：`life_app` 为 `NOSUPERUSER NOBYPASSRLS`；迁移角色持有认证 `SECURITY DEFINER` 函数并具备 `BYPASSRLS`，其连接只保存在 root `0600` 迁移配置中，不注入应用服务。
+- 私有配置：`/etc/life/staging.env` 与 `/etc/life/staging-migration.env` 均为 `0600 root:root`。
 
-## 3. 本地验证证据
+## 3. 本轮发现并修复的问题
+
+### 3.1 Caddy SPA fallback 抢占 API
+
+原模板中的 `try_files` 会先把 `/api/*` 与 `/healthz` 改写到 `/index.html`。已改为显式 `handle /api/*`、`handle /healthz` 和最终 SPA `handle`；live 复验结果：
+
+- `/healthz` 返回 `{"status":"ok","service":"life-api"}`；
+- 未登录 `/api/me` 返回 JSON `401`；
+- 首页继续返回移动端 SPA。
+
+### 3.2 真实 PostgreSQL FORCE RLS 阻断注册
+
+PGlite 未暴露认证 `SECURITY DEFINER` 函数所有者无法穿过 `FORCE RLS` 的差异。首次 live 注册因此被 `app_user` RLS 拒绝。修订后：
+
+- `life_app` 仍然不能绕过 RLS；
+- 只让本就拥有结构迁移权限的迁移角色显式 `BYPASSRLS`；
+- preflight 新增认证函数必须为 `SECURITY DEFINER` 且所有者能穿过 `FORCE RLS` 的检查；
+- 注册 live 重试通过。
+
+## 4. 已通过的 live 证据
 
 | 检查 | 结果 |
 |---|---|
-| `npm run staging:auth-contract` | `PASS`，8 项黑盒契约 |
-| `npm run api:typecheck` | `PASS` |
-| `npm run api:test` | `PASS`，4 文件、22/22 |
-| `npm run web:typecheck` | `PASS` |
-| `npm run web:build` | `PASS` |
-| `git diff --check` | `PASS` |
+| PostgreSQL 版本与连接 | `PASS`，16.15 |
+| 应用角色 | `PASS`，非超级用户、不可绕过 RLS |
+| 迁移与 RLS | `PASS`，14 migrations、31 FORCE RLS |
+| HTTPS 与证书 | `PASS`，Let's Encrypt，HTTP 308，HSTS |
+| API 边界 | `PASS`，仅 loopback 3100，Caddy 反代 |
+| 移动端注册 | `PASS`，真实创建唯一家庭和 owner |
+| 正式 Cookie | `PASS`，`Secure`、`HttpOnly`、`SameSite=Lax`、`Path=/` |
+| 第二会话登录与 `/api/me` | `PASS`，200 |
+| 财务正式身份页 | `PASS`，真实 PostgreSQL 空账本正常展示 |
+| 退出与会话失效 | `PASS`，Cookie 清除，`/api/me` 返回 401 |
+| 430/390/320 布局 | `PASS`，无根级横向溢出，未发现小于 44pt 的可见控件 |
+| 密码重置真实送达 | `BLOCKED`，尚无真实邮件交付 Endpoint 和测试邮箱读取接口 |
 
-这些结果只证明仓库准备就绪，不代替目标 PostgreSQL、可信证书和真实邮件送达。
+浏览器验收使用独立 `B011-LIVE-*` staging 家庭；未读取、上传或提交真实账单。
 
-## 4. 目标环境只读检查
+## 5. 仓库自动化
 
-- 目标服务器 TCP 22、80、443 当前可达；
-- HTTP 由 Caddy 响应，但 IP 直连返回 404，说明需要核对真实站点域名和 Caddy 配置；
-- HTTPS 通过 IP 直连因缺少正确 SNI 无法完成握手，不能据此判断证书状态；
-- SSH 返回的 ED25519 指纹与本机历史记录不一致；
-- 浏览器和桌面控制台自动连接均超时，未取得腾讯云控制台内的可信指纹证据；
-- 当前机器没有可用的原生 PostgreSQL 或容器运行时，不能用本地 PGlite 结果替代目标验证。
+- `npm run staging:auth-preflight`：检查数据库角色、RLS、认证函数所有者、HTTPS 配置和 Secure Cookie。
+- `npm run staging:auth-contract`：10 项，包含邮箱响应、Cookie、HTTPS、跳转和 Caddy API 路由优先级。
+- `npm run staging:auth-e2e`：保留完整黑盒流程，不读取数据库令牌，不增加 `/__e2e` 取令牌接口。
 
-## 5. 恢复执行的安全闸门
+## 6. 唯一剩余解除条件
 
-用户需要在腾讯云控制台打开该轻量服务器的实例终端，并执行：
+需要配置一个真实邮件交付服务，并提供一个只用于 B-011 的专用测试邮箱读取接口：
 
-```bash
-sudo ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
-```
+1. `LIFE_PASSWORD_RESET_DELIVERY_ENDPOINT`：HTTPS，接受项目既定 JSON 契约并真实投递邮件；如需要 Bearer，写入服务器私有环境，不进入仓库。
+2. `LIFE_E2E_MAILBOX_ENDPOINT`：HTTPS + Bearer，只允许读取专用测试邮箱，按 `recipient` 和 `after` 查询。
+3. `LIFE_E2E_EMAIL_TEMPLATE`：专用测试邮箱模板，不使用个人主邮箱。
 
-把控制台显示的 SHA256 指纹与本轮 SSH 返回的指纹逐字核对。确认一致后，才执行以下后续步骤：
+完成配置后执行完整 `npm run staging:auth-e2e`，必须验证邮件真实送达、更新密码、旧会话撤销、旧密码失效、新密码登录、财务会话和退出。通过后才能：
 
-1. 更新本机该 IP 的可信主机记录；
-2. 只读检查服务器系统、磁盘、Caddy、DNS、PostgreSQL 和现有目录；
-3. 建立独立 staging 数据库与应用角色；
-4. 发布构建产物和私有环境文件；
-5. 执行 `staging:auth-preflight`；
-6. 配置专用测试邮箱读取接口并执行 `staging:auth-e2e`；
-7. 全部实证通过后，才把 B-011 标记为 `DONE` 并进入 PR/CI/合并收口。
+1. 把 B-011 标记为 `DONE`；
+2. 创建 PR 并等待远端 `quality-gate`；
+3. 合并后执行 staging 回滚演练；
+4. 继续后续发布闸门。

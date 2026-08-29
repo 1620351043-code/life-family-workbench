@@ -50,9 +50,32 @@ try {
     "life_auth_create_password_reset(uuid,text,text,timestamptz,text,inet)",
     "life_auth_apply_password_reset(text,text)",
   ];
+  const securityDefinerOwners = new Set<string>();
   for (const procedure of requiredFunctions) {
-    const result = await pool.query<{ function_name: string | null }>("SELECT to_regprocedure($1) AS function_name", [procedure]);
-    if (!result.rows[0]?.function_name) throw new Error(`B-011 staging 数据库缺少 ${procedure}`);
+    const result = await pool.query<{
+      function_name: string;
+      security_definer: boolean;
+      owner_role: string;
+      owner_superuser: boolean;
+      owner_bypassrls: boolean;
+    }>(
+      `SELECT procedure.oid::regprocedure::text AS function_name,
+              procedure.prosecdef AS security_definer,
+              owner.rolname AS owner_role,
+              owner.rolsuper AS owner_superuser,
+              owner.rolbypassrls AS owner_bypassrls
+         FROM pg_proc procedure
+         JOIN pg_roles owner ON owner.oid = procedure.proowner
+        WHERE procedure.oid = to_regprocedure($1)`,
+      [procedure],
+    );
+    const functionContract = result.rows[0];
+    if (!functionContract) throw new Error(`B-011 staging 数据库缺少 ${procedure}`);
+    if (!functionContract.security_definer) throw new Error(`B-011 staging 函数 ${procedure} 必须为 SECURITY DEFINER`);
+    if (!functionContract.owner_superuser && !functionContract.owner_bypassrls) {
+      throw new Error(`B-011 staging 函数 ${procedure} 的所有者无法穿过 FORCE RLS`);
+    }
+    securityDefinerOwners.add(functionContract.owner_role);
   }
 
   console.log(JSON.stringify({
@@ -62,6 +85,7 @@ try {
     postgres_version: role.server_version,
     tables_checked: requiredTables.length,
     functions_checked: requiredFunctions.length,
+    security_definer_owners: [...securityDefinerOwners].sort(),
     public_app_https: true,
     password_reset_delivery_https: true,
     secure_cookie: true,

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import {
   assertHttpRedirect,
   assertHttpsHeaders,
@@ -47,4 +48,8 @@ assert.throws(() => loadStagingAuthConfig({
 }), /HTTPS/);
 assert.throws(() => parseMailboxPayload({ reset_url: `https://evil.example.test/?reset_token=${"a".repeat(48)}`, recipient: identity.email }, identity.email, config.baseUrl), /域名不一致/);
 
-console.log(JSON.stringify({ ok: true, checks: 8, contract: "B-011 staging auth black-box" }));
+const caddyTemplate = await readFile(new URL("../deploy/life-staging.Caddyfile.example", import.meta.url), "utf8");
+assert.match(caddyTemplate, /handle \/api\/\*/);
+assert.match(caddyTemplate, /handle \/healthz/);
+
+console.log(JSON.stringify({ ok: true, checks: 10, contract: "B-011 staging auth black-box" }));

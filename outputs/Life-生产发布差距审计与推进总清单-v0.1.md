@@ -82,7 +82,7 @@
 | 家庭 AI | `PARTIAL` | 财务连接契约部分实现，统一入口、设置、记忆管理和跨模块能力缺失 |
 | 安全与隐私 | `PARTIAL` | RLS、Cookie、密码哈希已有；限流、安全头、恢复演练等缺失 |
 | PWA 与移动端交付 | `PARTIAL` | 响应式页面存在，但没有 Manifest、Service Worker 和安装能力 |
-| 腾讯云部署与运维 | `BLOCKED` | 需要目标服务器、原生 PostgreSQL、COS、域名证书和运维配置 |
+| 腾讯云部署与运维 | `PARTIAL` | staging 已在目标服务器完成 PostgreSQL、systemd、Caddy、可信 HTTPS 与移动端身份实测；真实邮件、COS、监控备份和回滚演练待补 |
 
 ---
 
@@ -95,7 +95,7 @@
 | E-001 | Web TypeScript | `DONE` | `npm run web:typecheck` 通过 |
 | E-002 | API TypeScript | `DONE` | `npm run api:typecheck` 通过 |
 | E-003 | Web 生产构建 | `DONE` | `npm run web:build` 通过；当前 JS/CSS 产物约 515KB（未压缩） |
-| E-004 | API 自动化测试 | `DONE` | 4 个测试文件、22/22 测试通过；另有 B-011 staging 黑盒契约 8 项 |
+| E-004 | API 自动化测试 | `DONE` | 4 个测试文件、22/22 测试通过；另有 B-011 staging 黑盒契约 10 项 |
 | E-005 | OpenAPI 校验 | `DONE` | OpenAPI 3.1.0；61 paths、88 schemas |
 | E-006 | 迁移烟测 | `DONE` | 235 statements、30 protected tables、31 policies，另含会话与密码重置凭据表 |
 | E-007 | 依赖漏洞审计 | `DONE` | 官方 npm registry 返回 0 vulnerabilities |
@@ -221,7 +221,7 @@ npm run production:preflight
 | G7 | 安全与隐私 | `PARTIAL` | 限流、安全头、CSRF、文件安全、密码、越权和依赖审计通过 |
 | G8 | 运维与灾备 | `BLOCKED` | 监控、告警、备份、恢复、容量和回滚演练通过 |
 | G9 | 移动端和 PWA | `PARTIAL` | 安装能力、真机、可访问性、离线边界和全部 P0 流程通过 |
-| G10 | Staging 发布演练 | `NOT_STARTED` | 完整发布清单在腾讯云 staging 连续通过 |
+| G10 | Staging 发布演练 | `PARTIAL` | 腾讯云 staging 的 PostgreSQL、HTTPS、正式 Cookie、注册/登录/财务/退出已通过；真实邮件、完整发布清单和回滚演练待补 |
 
 ---
 
@@ -252,7 +252,7 @@ npm run production:preflight
 | B-008 | 家庭成员列表和角色 | `DONE` | owner/adult/child/guest 可查看；只有 owner 可管理非 owner 角色，角色变化重置显式财务授权并写审计 |
 | B-009 | 儿童及成员敏感权限 | `DONE` | 7 项 AI/家庭原图/家庭导出权限逐项管理；默认拒绝、owner 保护、版本冲突、审计、运行时双权限和角色撤权均有数据库/API/移动端证据 |
 | B-010 | 账户/家庭删除与数据导出说明 | `DONE` | 365 天保留、导出边界、7/14 天删除等待期、输入确认、可撤销计划、版本冲突、审计和三档移动端 E2E 已闭环；物理删除执行器不在本切片 |
-| B-011 | 正式身份移动端 E2E | `PARTIAL / LIVE_BLOCKED` | staging 安全环境、PostgreSQL 预检、Caddy/systemd 模板、真实邮箱黑盒 E2E 和 CI 契约已完成；目标服务器主机指纹待腾讯云控制台核验，PostgreSQL + HTTPS + 邮件送达尚未 live 验证 |
+| B-011 | 正式身份移动端 E2E | `PARTIAL / MAIL_DELIVERY_BLOCKED` | 目标 PostgreSQL 16.15、14 migrations、31 FORCE RLS、Caddy HTTPS、Secure/HttpOnly Cookie、注册、第二会话、财务身份态、退出及 430/390/320 已 live 通过；仅真实密码重置邮件交付和专用测试邮箱读取接口待配置 |
 
 ### 7.3 C：家庭空间
 
@@ -580,7 +580,7 @@ npm run production:preflight
 
 下一轮默认从以下任务开始，除非用户明确调整优先级：
 
-1. `B-011`：把当前本地真实 Cookie E2E 提升到目标 PostgreSQL + HTTPS + 真实密码重置交付环境。
+1. `B-011`：接入真实密码重置邮件 Endpoint 与专用测试邮箱读取接口，跑完已部署的目标 PostgreSQL + HTTPS 黑盒 E2E。
 2. `I-012`～`I-015`：建立备份、恢复、容量、发布和回滚演练证据。
 3. `G-013`～`G-014`：补原始账单到期前提醒和所有者主动删除原件闭环。
 
@@ -593,7 +593,7 @@ npm run production:preflight
 | 风险 | 等级 | 当前缓解措施 | 下一动作 |
 |---|---|---|---|
 | 无 Git 提交和回滚点 | 已关闭 | Git、CI、Tag 和回滚清单已建立 | 在 staging 完成真实回滚演练 |
-| 正式身份尚未在目标环境闭环 | P0 | B-004～B-010 本地真实 Cookie E2E、B-011 staging 黑盒工具和部署模板已完成 | 先从腾讯云控制台核实变化后的 SSH 主机指纹，再完成 PostgreSQL + HTTPS + 真实邮件交付复验 |
+| 正式身份尚未在目标环境闭环 | P0 | 主机指纹、PostgreSQL、HTTPS、Cookie、注册/登录/财务/退出和三档移动布局已 live 通过 | 配置真实邮件交付与专用测试邮箱读取接口，完成重置、会话撤销和新密码登录复验 |
 | 吃什么使用前端样本数据 | P0 | UI 明确标注来源样本 | 完成 D-005～D-012 |
 | 财务解析同步占用 HTTP | P0 | 120 秒开发代理超时 | 完成 E-114 |
 | 生产 COS 尚未验证 | P0 | 生产 fail-closed | 完成 E-119/I-004 |
@@ -612,7 +612,7 @@ npm run production:preflight
 - API 测试主要运行于 PGlite，不是目标服务器的原生 PostgreSQL。
 - 当前移动端验收服务已使用 `SqlAuthStore`、scrypt 密码和 HttpOnly Cookie；但数据库仍是 PGlite，不代替目标原生 PostgreSQL + HTTPS E2E。
 - 成员敏感权限已对主题摘要、财务解释/提案和导出执行服务端拦截；家庭媒体原图业务接口尚未实现，未来接入时必须复用同一权限检查。
-- 密码重置交付适配器和请求契约已自动化验证，但尚未在目标服务器接入真实邮件 Endpoint 并验证送达。
+- 密码重置交付适配器和请求契约已自动化验证，目标服务器也已完成 PostgreSQL 与 HTTPS 部署；当前唯一 B-011 阻塞是尚未接入真实邮件 Endpoint 和专用测试邮箱读取接口。
 - 财务视觉回归已在正式本地会话下通过，预算环可见且三档控件命中区达到 44pt；目标服务器结果仍待复验。
 - 腾讯云 COS 私有桶适配已按此前要求跳过，本轮未执行真实 live smoke。
 - 没有在目标服务器执行备份、恢复、回滚、压力和故障演练。
@@ -639,3 +639,4 @@ npm run production:preflight
 | v0.12 | 2026-08-28 | 完成 7 项成员敏感权限、默认拒绝、owner 保护、乐观并发、审计、AI/导出运行时拦截、角色撤权和三档移动端 E2E；修复权限层与角色层点击拦截 | B-009 `DONE`；下一项 B-010 |
 | v0.13 | 2026-08-28 | 完成数据与安全页面、365 天保留/导出边界、账号 7 天与家庭 14 天删除计划、输入确认、撤销、版本冲突、家庭隔离和三档移动端 E2E；明确物理删除执行器与全量家庭归档未冒充完成 | B-010 `DONE`；下一项 B-011 |
 | v0.14 | 2026-08-28 | 完成 B-011 staging 安全环境、原生 PostgreSQL 身份预检、Caddy/systemd 模板、真实邮箱黑盒 E2E 和 CI 契约；目标服务器端口可达但 SSH 主机指纹变化，未绕过安全校验 | B-011 保持 `PARTIAL / LIVE_BLOCKED`，等待腾讯云控制台可信指纹后继续 live 验收 |
+| v0.15 | 2026-08-29 | 完成主机指纹核验、PostgreSQL 16.15、14 项迁移、31 张 FORCE RLS 表、独立 systemd 服务、`life.wbutterfly.cn` 可信 HTTPS 和真实移动端注册/登录/Cookie/财务/退出；修复 Caddy SPA 抢占 API 与认证函数所有者被 FORCE RLS 阻断问题 | B-011 更新为 `PARTIAL / MAIL_DELIVERY_BLOCKED`，只剩真实密码重置邮件送达闭环 |
