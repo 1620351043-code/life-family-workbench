@@ -2,13 +2,13 @@
 
 日期：2026-08-29
 
-状态：`PARTIAL / MAIL_DELIVERY_BLOCKED`
+状态：`PARTIAL / SES_DOMAIN_REVIEW`
 
 适用范围：原生 PostgreSQL、HTTPS、正式 Cookie、真实密码重置交付的移动端黑盒 E2E
 
 ## 1. 当前结论
 
-B-011 已从“服务器不可进入”推进到“真实 PostgreSQL、HTTPS、注册、登录、正式 Cookie、财务身份态和退出均 live 通过”。当前只剩真实密码重置邮件交付与专用测试邮箱读取接口没有配置，因此仍不能标记 `DONE`，也不能创建生产发布 Tag。
+B-011 已从“服务器不可进入”推进到“真实 PostgreSQL、HTTPS、注册、登录、正式 Cookie、财务身份态和退出均 live 通过”。2026-08-29 已在腾讯云 SES 提交独立发信子域 `notify.wbutterfly.cn`，控制台状态为“待审核”。审核和后续 DNS 身份验证完成前，真实密码重置邮件交付与专用测试邮箱读取接口仍不可配置，因此本项不能标记 `DONE`，也不能创建生产发布 Tag。
 
 腾讯云 COS 私有桶不属于本切片。staging 继续使用 `/var/lib/life/staging-imports` 隔离目录；这不关闭 `E-119/I-004`。
 
@@ -60,7 +60,7 @@ PGlite 未暴露认证 `SECURITY DEFINER` 函数所有者无法穿过 `FORCE RLS
 | 财务正式身份页 | `PASS`，真实 PostgreSQL 空账本正常展示 |
 | 退出与会话失效 | `PASS`，Cookie 清除，`/api/me` 返回 401 |
 | 430/390/320 布局 | `PASS`，无根级横向溢出，未发现小于 44pt 的可见控件 |
-| 密码重置真实送达 | `BLOCKED`，尚无真实邮件交付 Endpoint 和测试邮箱读取接口 |
+| 密码重置真实送达 | `BLOCKED / SES_DOMAIN_REVIEW`，`notify.wbutterfly.cn` 已提交，等待腾讯云审核后读取其生成的 DNS 验证记录；真实邮件交付 Endpoint 和测试邮箱读取接口尚未配置 |
 
 浏览器验收使用独立 `B011-LIVE-*` staging 家庭；未读取、上传或提交真实账单。
 
@@ -72,11 +72,16 @@ PGlite 未暴露认证 `SECURITY DEFINER` 函数所有者无法穿过 `FORCE RLS
 
 ## 6. 唯一剩余解除条件
 
-需要配置一个真实邮件交付服务，并提供一个只用于 B-011 的专用测试邮箱读取接口：
+已提交的发信子域与下一步必须严格按以下顺序进行，不能在审核状态下猜测或预写 DNS 记录：
 
-1. `LIFE_PASSWORD_RESET_DELIVERY_ENDPOINT`：HTTPS，接受项目既定 JSON 契约并真实投递邮件；如需要 Bearer，写入服务器私有环境，不进入仓库。
-2. `LIFE_E2E_MAILBOX_ENDPOINT`：HTTPS + Bearer，只允许读取专用测试邮箱，按 `recipient` 和 `after` 查询。
-3. `LIFE_E2E_EMAIL_TEMPLATE`：专用测试邮箱模板，不使用个人主邮箱。
+1. `notify.wbutterfly.cn`：已提交至腾讯云 SES，当前为“待审核”；现有网站、`life.wbutterfly.cn` 和根域 DNS 均未改动。
+2. 审核通过后，从 SES 域名详情读取该域专属的 MX、SPF、DKIM、DMARC 记录，逐条写入 DNSPod 并等待验证通过。
+3. 验证通过后，创建专用发信地址和审核通过的密码重置邮件模板。
+4. 最后配置一个真实邮件交付服务，并提供一个只用于 B-011 的专用测试邮箱读取接口：
+
+   - `LIFE_PASSWORD_RESET_DELIVERY_ENDPOINT`：HTTPS，接受项目既定 JSON 契约并真实投递邮件；如需要 Bearer，写入服务器私有环境，不进入仓库。
+   - `LIFE_E2E_MAILBOX_ENDPOINT`：HTTPS + Bearer，只允许读取专用测试邮箱，按 `recipient` 和 `after` 查询。
+   - `LIFE_E2E_EMAIL_TEMPLATE`：专用测试邮箱模板，不使用个人主邮箱。
 
 完成配置后执行完整 `npm run staging:auth-e2e`，必须验证邮件真实送达、更新密码、旧会话撤销、旧密码失效、新密码登录、财务会话和退出。通过后才能：
 
