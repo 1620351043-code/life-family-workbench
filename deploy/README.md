@@ -119,6 +119,8 @@ npm run staging:auth-e2e
 
 仓库已提供 `scripts/postgres_backup.sh`、`deploy/life-staging-postgres-backup.service.example`、`deploy/life-staging-postgres-backup.timer.example` 和 `deploy/staging-backup.env.example`。它们尚未部署到服务器，不应因为文件存在而将 I-012 标记为完成。
 
+本地可先执行 `npm run postgres:backup-contract` 验证脚本语法、加密/校验/保留期/远端校验契约（17 项检查），该检查不连接真实数据库或 COS。
+
 备份服务的安全边界：
 
 - 仅从 root 私有的 `/etc/life/staging-migration.env` 读取现有迁移数据库连接；不会将连接串写入日志、归档或 Git。

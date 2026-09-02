@@ -1,0 +1,21 @@
+[Unit]
+Description=Life staging encrypted PostgreSQL backup
+Wants=network-online.target
+After=network-online.target postgresql.service
+Requires=postgresql.service
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+UMask=0077
+EnvironmentFile=/etc/life/staging-migration.env
+EnvironmentFile=/etc/life/staging-backup.env
+ExecStart=/srv/life/current/scripts/postgres_backup.sh
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/backups/life/staging/postgres /var/lib/life/staging-backup-gnupg
+StandardOutput=journal
+StandardError=journal
