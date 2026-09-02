@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "api:dev": "tsx src/api/server.ts",
+    "api:start": "tsx src/api/server.ts",
     "api:test": "vitest run",
     "api:typecheck": "tsc --noEmit",
     "openapi:validate": "node scripts/validate-openapi.mjs",
@@ -13,7 +14,11 @@
     "cos:live-smoke": "NODE_ENV=production LIFE_COS_LIVE_SMOKE=true tsx scripts/production_preflight.ts",
     "db:migrate": "tsx scripts/migrate_postgres.ts",
     "production:preflight": "tsx scripts/production_preflight.ts",
+    "staging:auth-preflight": "tsx scripts/staging_auth_preflight.ts",
+    "staging:auth-contract": "node scripts/staging_auth_contract_test.mjs",
+    "staging:auth-e2e": "node scripts/staging_auth_e2e.mjs",
     "finance:export-worker": "tsx scripts/finance_export_worker.ts",
+    "finance:import-worker": "tsx scripts/finance_import_worker.ts",
     "finance:retention-worker": "tsx scripts/finance_retention_worker.ts",
     "web:dev": "vite --config ui/app/vite.config.ts",
     "web:build": "vite build --config ui/app/vite.config.ts",
@@ -21,6 +26,8 @@
     "web:food-smoke": "node scripts/food_vertical_slice_smoke.mjs",
     "web:auth-e2e": "node scripts/auth_mobile_e2e.mjs",
     "web:visual-regression": "node scripts/mobile_visual_regression.mjs",
+    "web:finance-visual-regression": "node scripts/finance_full_visual_regression.mjs",
+    "web:finance-e2e": "node scripts/finance_mobile_e2e.mjs",
     "web:screenshot-catalog": "node scripts/ui_screenshot_catalog.mjs"
   },
   "engines": {

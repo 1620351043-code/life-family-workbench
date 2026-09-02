@@ -14,12 +14,13 @@ import { SqlAuthStore, type AuthSession, type AuthStore } from "./auth.js";
 import { InMemoryAuthAttemptLimiter, type AuthAttemptLimiter, type AuthRateLimitInput } from "./auth-rate-limit.js";
 import { createPasswordResetDeliveryFromEnv, type PasswordResetDelivery } from "./password-reset-delivery.js";
 import { sensitiveCapabilities } from "./sensitive-permissions.js";
+import { isProductionDeployment, isSecureDeployment } from "./deployment-environment.js";
 
 const sourceTypes = ["bank", "alipay", "wechat", "bookkeeping_app", "other"] as const;
 const overviewQuerySchema = z.object({ start: z.string().date(), end: z.string().date(), granularity: z.enum(["day", "week", "month", "quarter"]).default("day") });
 const pageQuerySchema = z.object({ page: z.coerce.number().int().min(1).default(1), page_size: z.coerce.number().int().min(1).max(100).default(50) });
 const transactionListQuerySchema = pageQuerySchema.extend({ start: z.string().date().optional(), end: z.string().date().optional(), direction: z.enum(["income", "expense", "transfer"]).optional(), account_id: z.string().uuid().optional(), import_batch_id: z.string().uuid().optional() });
-const createImportBatchSchema = z.object({ source_type: z.enum(sourceTypes), file_name: z.string().min(1).max(255), file_size: z.number().int().nonnegative(), file_sha256: z.string().regex(/^[a-f0-9]{64}$/i), object_key: z.string().min(1) });
+const createImportBatchSchema = z.object({ source_type: z.enum(sourceTypes), file_name: z.string().min(1).max(255), file_size: z.number().int().nonnegative(), file_sha256: z.string().regex(/^[a-f0-9]{64}$/i), object_key: z.string().min(1), account_id: z.string().uuid().nullable().optional() });
 const accountTypeSchema = z.enum(["bank", "cash", "wallet", "payment_platform", "other"]);
 const createAccountSchema = z.object({ name: z.string().trim().min(1).max(80), account_type: accountTypeSchema, currency: z.string().length(3).default("CNY"), opening_balance: z.string().regex(/^\d+(?:\.\d{1,4})?$/).default("0") });
 const updateAccountSchema = z.object({ name: z.string().trim().min(1).max(80), account_type: accountTypeSchema });
@@ -76,7 +77,7 @@ const deletionCancelSchema = z.object({ expected_version: z.number().int().min(1
 export type FinanceRepositoryFactory = (scope: FinanceScope) => FinanceRepository;
 export type FamilyRepositoryFactory = (scope: FinanceScope) => FamilyRepository;
 export type ScopeResolver = (request: FastifyRequest) => FinanceScope | null | Promise<FinanceScope | null>;
-export type ServerOptions = { financeFactory?: FinanceRepositoryFactory; familyFactory?: FamilyRepositoryFactory; resolveScope?: ScopeResolver; authStore?: AuthStore; authAttemptLimiter?: AuthAttemptLimiter; passwordResetDelivery?: PasswordResetDelivery; importObjectStore?: ImportObjectStore; importParser?: FinanceImportParser; exportRunner?: (scope: FinanceScope, jobId: string) => Promise<void> };
+export type ServerOptions = { financeFactory?: FinanceRepositoryFactory; familyFactory?: FamilyRepositoryFactory; resolveScope?: ScopeResolver; authStore?: AuthStore; authAttemptLimiter?: AuthAttemptLimiter; passwordResetDelivery?: PasswordResetDelivery; importObjectStore?: ImportObjectStore; importParser?: FinanceImportParser; exportRunner?: (scope: FinanceScope, jobId: string) => Promise<void>; importRunner?: (scope: FinanceScope, batchId: string, jobId: string) => Promise<unknown> };
 
 const requestScopes = new WeakMap<object, FinanceScope | null>();
 const requestSessions = new WeakMap<object, AuthSession>();
@@ -101,7 +102,7 @@ function sessionCookieName() {
 }
 
 function setSessionCookie(reply: { header(name: string, value: string): unknown }, token: string | null) {
-  const secure = process.env.NODE_ENV === "production" || process.env.LIFE_SESSION_COOKIE_SECURE === "true";
+  const secure = isSecureDeployment() || process.env.LIFE_SESSION_COOKIE_SECURE === "true";
   const suffix = secure ? "; Secure" : "";
   const maxAge = token ? "; Max-Age=2592000" : "; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT";
   reply.header("set-cookie", `${sessionCookieName()}=${token ? encodeURIComponent(token) : ""}; Path=/; HttpOnly; SameSite=Lax${suffix}${maxAge}`);
@@ -146,11 +147,15 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
   const authAttemptLimiter = options.authAttemptLimiter ?? new InMemoryAuthAttemptLimiter();
   const passwordResetDelivery = options.passwordResetDelivery;
   const resolveScope = options.resolveScope ?? defaultScopeResolver;
-  if (process.env.NODE_ENV === "production" && !authStore && !options.resolveScope) throw new Error("生产环境必须配置正式会话 resolver 或 authStore，禁止使用开发 scope");
-  const importObjectStore: ImportObjectStore = options.importObjectStore ?? (process.env.NODE_ENV === "production" ? createProductionCosObjectStoreFromEnv() : new LocalImportObjectStore());
-  if (process.env.NODE_ENV === "production" && !importObjectStore.production) throw new Error("生产环境必须使用腾讯云 COS 私有桶适配器，禁止回退到本地账单存储");
+  if (isSecureDeployment() && !authStore && !options.resolveScope) throw new Error("staging/production 必须配置正式会话 resolver 或 authStore，禁止使用开发 scope");
+  const importObjectStore: ImportObjectStore = options.importObjectStore ?? (isProductionDeployment() ? createProductionCosObjectStoreFromEnv() : new LocalImportObjectStore());
+  if (isProductionDeployment() && !importObjectStore.production) throw new Error("生产环境必须使用腾讯云 COS 私有桶适配器，禁止回退到本地账单存储");
   const importParser = options.importParser ?? new LocalFinanceImportParser(importObjectStore);
-  const app = Fastify({ logger: process.env.NODE_ENV === "production", bodyLimit: 50 * 1024 * 1024 });
+  const app = Fastify({
+    logger: isSecureDeployment(),
+    bodyLimit: 50 * 1024 * 1024,
+    trustProxy: isSecureDeployment() ? ["127.0.0.1", "::1"] : false,
+  });
   app.addContentTypeParser("application/octet-stream", { parseAs: "buffer" }, (_request, body, done) => done(null, body));
   app.addHook("preHandler", async (request) => {
     if (!request.url.startsWith("/api/")) return;
@@ -803,7 +808,7 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     const repository = options.financeFactory?.(scope);
     if (!repository) return requireFactory(reply, options.financeFactory);
     const input = createImportBatchSchema.parse(request.body);
-    const batch = await repository.createImportBatch({ sourceType: input.source_type as ImportSourceType, fileName: input.file_name, fileSize: input.file_size, fileSha256: input.file_sha256, objectKey: input.object_key });
+    const batch = await repository.createImportBatch({ sourceType: input.source_type as ImportSourceType, fileName: input.file_name, fileSize: input.file_size, fileSha256: input.file_sha256, objectKey: input.object_key, accountId: input.account_id });
     return reply.code(201).send(batch);
   });
 
@@ -863,10 +868,54 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     if (!repository) return requireFactory(reply, options.financeFactory);
     const batch = await repository.getImportBatch(request.params.batchId);
     if (!batch) throw new DomainError("NOT_FOUND", "导入批次不存在", 404);
-    if (["header_detected", "mapping_pending", "normalized", "matching", "reconciliation_pending", "confirmed", "committed"].includes(batch.status)) return batch;
-    if (batch.status !== "uploaded") throw new DomainError("IMPORT_STATE_CONFLICT", "当前批次不能开始解析", 409);
-    const parsed = await importParser.parse({ objectKey: importObjectKey(scope.householdId, request.params.batchId), sourceType: batch.source_type, fileName: batch.file_name });
-    return repository.stageParsedImport(request.params.batchId, parsed);
+    const job = await repository.enqueueImportParse(request.params.batchId);
+    const runImport = options.importRunner;
+    if (job.status === "queued" && runImport) setTimeout(() => { void runImport(scope, request.params.batchId, job.id); }, 0);
+    const updated = await repository.getImportBatch(request.params.batchId);
+    if (!updated) throw new DomainError("NOT_FOUND", "导入批次不存在", 404);
+    return reply.code(202).send({ batch: updated, job });
+  });
+
+  app.get<{ Params: { jobId: string } }>("/api/finance/import-jobs/:jobId", async (request, reply) => {
+    const scope = requireScope(request, reply, resolveScope);
+    if (!scope) return;
+    const repository = options.financeFactory?.(scope);
+    if (!repository) return requireFactory(reply, options.financeFactory);
+    const job = await repository.getImportParseJob(request.params.jobId);
+    if (!job) throw new DomainError("NOT_FOUND", "解析任务不存在或不属于当前家庭", 404);
+    return job;
+  });
+
+  app.post<{ Params: { jobId: string } }>("/api/finance/import-jobs/:jobId/pause", async (request, reply) => {
+    const scope = requireScope(request, reply, resolveScope);
+    if (!scope) return;
+    const repository = options.financeFactory?.(scope);
+    if (!repository) return requireFactory(reply, options.financeFactory);
+    return repository.pauseImportParseJob(request.params.jobId);
+  });
+
+  app.post<{ Params: { jobId: string } }>("/api/finance/import-jobs/:jobId/resume", async (request, reply) => {
+    const scope = requireScope(request, reply, resolveScope);
+    if (!scope) return;
+    const repository = options.financeFactory?.(scope);
+    if (!repository) return requireFactory(reply, options.financeFactory);
+    return repository.resumeImportParseJob(request.params.jobId);
+  });
+
+  app.post<{ Params: { jobId: string } }>("/api/finance/import-jobs/:jobId/cancel", async (request, reply) => {
+    const scope = requireScope(request, reply, resolveScope);
+    if (!scope) return;
+    const repository = options.financeFactory?.(scope);
+    if (!repository) return requireFactory(reply, options.financeFactory);
+    return repository.cancelImportParseJob(request.params.jobId);
+  });
+
+  app.post<{ Params: { jobId: string } }>("/api/finance/import-jobs/:jobId/retry", async (request, reply) => {
+    const scope = requireScope(request, reply, resolveScope);
+    if (!scope) return;
+    const repository = options.financeFactory?.(scope);
+    if (!repository) return requireFactory(reply, options.financeFactory);
+    return repository.retryImportParseJob(request.params.jobId);
   });
 
   app.post<{ Params: { batchId: string } }>("/api/finance/import-batches/:batchId/mapping-confirmation", async (request, reply) => {
@@ -919,8 +968,9 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
 if (import.meta.url === `file://${process.argv[1]}`) {
   const databaseUrl = process.env.DATABASE_URL;
   const pool = databaseUrl ? new Pool({ connectionString: databaseUrl }) : null;
-  const importObjectStore: ImportObjectStore = process.env.NODE_ENV === "production" ? createProductionCosObjectStoreFromEnv() : new LocalImportObjectStore();
+  const importObjectStore: ImportObjectStore = isProductionDeployment() ? createProductionCosObjectStoreFromEnv() : new LocalImportObjectStore();
   const authStore = pool ? new SqlAuthStore(pool as unknown as DbPool) : undefined;
+  const importParser = new LocalFinanceImportParser(importObjectStore);
   const passwordResetDelivery = createPasswordResetDeliveryFromEnv();
   const app = buildServer({
     financeFactory: pool ? ((scope) => new SqlFinanceRepository(pool as unknown as DbPool, scope, importObjectStore)) : undefined,
@@ -928,6 +978,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     authStore,
     passwordResetDelivery,
     importObjectStore,
+    importParser,
     exportRunner: pool ? ((scope, jobId) => runFinanceExportJob(pool as unknown as DbPool, scope, importObjectStore, jobId)) : undefined,
   });
   await app.listen({ host: "127.0.0.1", port: Number(process.env.PORT ?? 3100) });

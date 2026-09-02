@@ -1,0 +1,27 @@
+staging-life.example.com {
+  encode zstd gzip
+
+  # Keep API routes outside the SPA fallback. Without explicit handles,
+  # try_files can rewrite /api/* and /healthz to /index.html first.
+  handle /api/* {
+    reverse_proxy 127.0.0.1:3100
+  }
+
+  handle /healthz {
+    reverse_proxy 127.0.0.1:3100
+  }
+
+  handle {
+    root * /srv/life/releases/current/dist/mobile
+    try_files {path} /index.html
+    file_server
+  }
+
+  header {
+    Strict-Transport-Security "max-age=31536000; includeSubDomains"
+    X-Content-Type-Options "nosniff"
+    Referrer-Policy "strict-origin-when-cross-origin"
+    Permissions-Policy "camera=(), microphone=(), geolocation=()"
+    Content-Security-Policy "default-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; font-src 'self' data:"
+  }
+}

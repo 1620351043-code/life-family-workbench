@@ -1,3 +1,5 @@
+import { isSecureDeployment } from "./deployment-environment.js";
+
 export type PasswordResetDeliveryMessage = {
   email: string;
   token: string;
@@ -34,6 +36,6 @@ export function createPasswordResetDeliveryFromEnv(): PasswordResetDelivery | un
   const endpoint = process.env.LIFE_PASSWORD_RESET_DELIVERY_ENDPOINT?.trim();
   const publicAppUrl = process.env.LIFE_PUBLIC_APP_URL?.trim();
   if (!endpoint || !publicAppUrl) return undefined;
-  if (process.env.NODE_ENV === "production" && (!endpoint.startsWith("https://") || !publicAppUrl.startsWith("https://"))) throw new Error("生产密码重置交付和公开 App URL 必须使用 HTTPS");
+  if (isSecureDeployment() && (!endpoint.startsWith("https://") || !publicAppUrl.startsWith("https://"))) throw new Error("staging/production 密码重置交付和公开 App URL 必须使用 HTTPS");
   return new HttpPasswordResetDelivery(endpoint, publicAppUrl, process.env.LIFE_PASSWORD_RESET_DELIVERY_BEARER_TOKEN?.trim());
 }

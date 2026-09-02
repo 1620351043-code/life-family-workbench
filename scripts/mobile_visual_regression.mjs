@@ -34,13 +34,15 @@ try {
   for (const viewport of viewports) {
     await page.setViewportSize({ width: viewport.width, height: viewport.height });
     await page.goto(`${baseUrl}/?route=finance`, { waitUntil: "networkidle" });
-    if (await page.locator(".auth-card").isVisible().catch(() => false)) {
+    await page.locator(".auth-card, .bottom-nav").first().waitFor({ state: "visible", timeout: 15000 });
+    if (await page.locator(".auth-card").isVisible()) {
       await page.locator('input[name="email"]').fill(authEmail);
       await page.locator('input[name="password"]').fill(authPassword);
       await page.getByRole("button", { name: "进入我的家庭" }).click();
       await page.getByRole("navigation", { name: "主导航" }).waitFor();
     }
     await page.getByRole("button", { name: "财务" }).click().catch(() => undefined);
+    await page.locator(".finance-ring-button").waitFor({ state: "visible", timeout: 15000 });
     await page.waitForTimeout(250);
     const audit = await page.evaluate(() => {
       const root = document.documentElement;
@@ -66,9 +68,12 @@ try {
         narrowControls: controls.filter((item) => item.width < 44 || item.height < 44),
         financeVisible: Boolean(document.querySelector(".finance-page")),
         budgetRingWidth: document.querySelector(".finance-ring-button")?.getBoundingClientRect().width ?? 0,
+        budgetLegendCount: document.querySelectorAll(".finance-budget-item").length,
       };
     });
     if (!audit.financeVisible) throw new Error(`${viewport.name}: finance page not visible`);
+    if (audit.budgetRingWidth <= 0) throw new Error(`${viewport.name}: budget ring not rendered (${audit.budgetRingWidth})`);
+    if (audit.budgetLegendCount === 0) throw new Error(`${viewport.name}: budget legend not rendered`);
     if (audit.rootScrollWidth > audit.rootWidth) throw new Error(`${viewport.name}: horizontal overflow ${audit.rootScrollWidth} > ${audit.rootWidth}`);
     if (audit.narrowControls.length) throw new Error(`${viewport.name}: control below 44pt ${JSON.stringify(audit.narrowControls)}`);
     await page.screenshot({ path: `${outputDir}/finance-${viewport.name}.png`, fullPage: false });

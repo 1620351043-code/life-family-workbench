@@ -82,30 +82,31 @@
 | 家庭 AI | `PARTIAL` | 财务连接契约部分实现，统一入口、设置、记忆管理和跨模块能力缺失 |
 | 安全与隐私 | `PARTIAL` | RLS、Cookie、密码哈希已有；限流、安全头、恢复演练等缺失 |
 | PWA 与移动端交付 | `PARTIAL` | 响应式页面存在，但没有 Manifest、Service Worker 和安装能力 |
-| 腾讯云部署与运维 | `BLOCKED` | 需要目标服务器、原生 PostgreSQL、COS、域名证书和运维配置 |
+| 腾讯云部署与运维 | `PARTIAL` | staging 已在目标服务器完成 PostgreSQL、systemd、Caddy、可信 HTTPS 与移动端身份实测；真实邮件、COS、监控备份和回滚演练待补 |
 
 ---
 
 ## 2. 已验证通过的工程证据
 
-审计日期 2026-08-28 的实际结果：
+审计日期截至 2026-09-02 的实际结果：
 
 | ID | 检查项 | 状态 | 当前证据 |
 |---|---|---|---|
 | E-001 | Web TypeScript | `DONE` | `npm run web:typecheck` 通过 |
 | E-002 | API TypeScript | `DONE` | `npm run api:typecheck` 通过 |
 | E-003 | Web 生产构建 | `DONE` | `npm run web:build` 通过；当前 JS/CSS 产物约 515KB（未压缩） |
-| E-004 | API 自动化测试 | `DONE` | 3 个测试文件、19/19 测试通过 |
+| E-004 | API 自动化测试 | `DONE` | 4 个测试文件、22/22 测试通过；另有 B-011 staging 黑盒契约 10 项 |
 | E-005 | OpenAPI 校验 | `DONE` | OpenAPI 3.1.0；61 paths、88 schemas |
 | E-006 | 迁移烟测 | `DONE` | 235 statements、30 protected tables、31 policies，另含会话与密码重置凭据表 |
 | E-007 | 依赖漏洞审计 | `DONE` | 官方 npm registry 返回 0 vulnerabilities |
-| E-008 | 吃什么移动端烟测 | `DONE` | 430×932、320×900 流程通过，无横向溢出 |
+| E-008 | 吃什么移动端烟测 | `DONE` | 真实验收账号会话下 430×932、320×900 推荐→确认→HowToCook→采购→搜索→历史通过，无横向溢出 |
 | E-009 | 四份真实账单回放 | `DONE` | 1,339 来源记录、1,331 正式流水、8 个关联候选 |
 | E-010 | 未授权财务降级页 | `DONE` | 无权限状态可显示，未泄露账本数据 |
 | E-011 | 密码重置移动端闭环 | `DONE` | 430/390/320 申请与确认布局、单次令牌、过期、会话撤销、旧密码失效和新密码登录通过 |
 | E-012 | 家庭邀请与成员角色移动端闭环 | `DONE` | owner 创建儿童邀请、新账号加入同一家庭、成员列表、非 owner 拒绝、owner 改角色与财务授权重置通过；430/390/320 无根级或嵌套横向溢出且命中区 ≥44pt |
 | E-013 | 成员敏感权限移动端闭环 | `DONE` | 7 项 AI/原图/导出权限默认拒绝、owner 授权、角色撤权、版本冲突和运行时拦截通过 |
 | E-014 | 数据权利与删除等待期移动端闭环 | `DONE` | 365 天保留、导出边界、7/14 天等待期、输入确认、计划创建/撤销、审计和三档视口通过；物理删除执行器未包含 |
+| E-015 | 财务完整视觉回归 | `DONE` | `npm run web:finance-visual-regression`：真实 `mobile-e2e@example.invalid` 登录会话，23 个财务状态 × 430/390/320 = 69 张截图（`output/playwright/finance-full-golden`）；每项 financeVisible=true、pageTextLength>0、无根级横向溢出、可见控件 ≥44×44pt；修复 `finance-import-history` 关闭按钮宽度不足 44pt 后全绿；真实文件上传后的表头预览/映射/审核流程由 E-116 完成 |
 
 ### 2.1 四份真实账单结果
 
@@ -221,7 +222,7 @@ npm run production:preflight
 | G7 | 安全与隐私 | `PARTIAL` | 限流、安全头、CSRF、文件安全、密码、越权和依赖审计通过 |
 | G8 | 运维与灾备 | `BLOCKED` | 监控、告警、备份、恢复、容量和回滚演练通过 |
 | G9 | 移动端和 PWA | `PARTIAL` | 安装能力、真机、可访问性、离线边界和全部 P0 流程通过 |
-| G10 | Staging 发布演练 | `NOT_STARTED` | 完整发布清单在腾讯云 staging 连续通过 |
+| G10 | Staging 发布演练 | `PARTIAL` | 腾讯云 staging 的 PostgreSQL、HTTPS、正式 Cookie、注册/登录/财务/退出已通过；真实邮件、完整发布清单和回滚演练待补 |
 
 ---
 
@@ -252,7 +253,7 @@ npm run production:preflight
 | B-008 | 家庭成员列表和角色 | `DONE` | owner/adult/child/guest 可查看；只有 owner 可管理非 owner 角色，角色变化重置显式财务授权并写审计 |
 | B-009 | 儿童及成员敏感权限 | `DONE` | 7 项 AI/家庭原图/家庭导出权限逐项管理；默认拒绝、owner 保护、版本冲突、审计、运行时双权限和角色撤权均有数据库/API/移动端证据 |
 | B-010 | 账户/家庭删除与数据导出说明 | `DONE` | 365 天保留、导出边界、7/14 天删除等待期、输入确认、可撤销计划、版本冲突、审计和三档移动端 E2E 已闭环；物理删除执行器不在本切片 |
-| B-011 | 正式身份移动端 E2E | `PARTIAL` | 本地 PGlite + SqlAuthStore + HttpOnly Cookie 已通过注册→退出→登录→`/api/me`→财务回归→退出；目标 PostgreSQL + HTTPS 尚未验证 |
+| B-011 | 正式身份移动端 E2E | `PARTIAL / DEFERRED_SES_REVIEW` | 目标 PostgreSQL 16.15、14 migrations、31 FORCE RLS、Caddy HTTPS、Secure/HttpOnly Cookie、注册、第二会话、财务身份态、退出及 430/390/320 已 live 通过；`notify.wbutterfly.cn` 已提交腾讯云 SES、等待审核。用户已授权先推进灾备工作包；审核后仍须继续 DNS 验证、真实邮件交付和专用测试邮箱读取接口 |
 
 ### 7.3 C：家庭空间
 
@@ -310,10 +311,10 @@ npm run production:preflight
 | E-111 | 导入提交、撤销和导出 | `DONE` | 幂等提交、批次撤销、异步导出和过期测试通过 |
 | E-112 | 365 天清理 worker | `DONE` | 对象删除、最小摘要保留、审计和失败重试代码测试通过 |
 | E-113 | PDF/ZIP/OCR 导入 | `NOT_STARTED` | PDF 页、ZIP 结构、OCR 置信度和安全解压通过 |
-| E-114 | 解析任务异步队列化 | `NOT_STARTED` | HTTP 只创建任务；worker 可重试、暂停、撤销、恢复 |
+| E-114 | 解析任务异步队列化 | `DONE` | `finance_import_job` 迁移、独立 worker、HTTP 202 异步排队、暂停/恢复/取消/重试、批次携带任务状态、移动端轮询同步；修复异步解析后字段映射未回填与本地并发 500。迁移烟测 241 statements/31 tables/32 policies，OpenAPI 66 paths/89 schemas，22 项 API 测试、正式身份财务移动端 E2E 和三档视觉回归通过；目标原生 PostgreSQL/HTTPS 仍归 E-118/B-011 闸门 |
 | E-115 | 大文件和恶意文件防护 | `PARTIAL` | 50MB body limit 已有；类型、压缩炸弹、宏、路径等待补 |
-| E-116 | 正式身份财务移动端 E2E | `NOT_STARTED` | 登录后完成首页→记账→下钻→导入→审核→导出 |
-| E-117 | 财务完整视觉回归 | `NOT_STARTED` | 预算环宽度大于 0；全部财务子页在 430/390/320 实际截图 |
+| E-116 | 正式身份财务移动端 E2E | `DONE` | `npm run web:finance-e2e`：真实登录 → 首页/总资产/预算环/收支趋势/资产趋势下钻 → 手动支出/收入/转账 → 编辑与撤销 → 银行/微信/支付宝/记账 App 四类真实 CSV 上传（表头行号预览、字段映射、跨来源重复候选确认）→ 统一账本提交 → 导出 CSV 并过期 409 → 移动端撤销导入批次 → 账本流水减少；430×932 布局审计无溢出、无 <44pt 控件；证据 `output/playwright/finance-e2e/` |
+| E-117 | 财务完整视觉回归 | `DONE` | 真实验收账号会话下 23 个财务状态在 430/390/320 三档截图完成，共 69 张；每页可见、非空、无根级横向溢出、可见控件 ≥44×44pt；证据见 E-015；真实文件上传后的解析流程已由 E-116 闭环 |
 | E-118 | 原生 PostgreSQL 验证 | `BLOCKED` | 目标实例迁移、RLS、连接池、索引和并发测试通过 |
 | E-119 | 腾讯云 COS live smoke | `BLOCKED` | 私有上传、AES256、读取、签名、隔离和删除通过 |
 | E-120 | 财务备份恢复和回滚 | `BLOCKED` | 从备份恢复后账本、来源关系、审计和权限一致 |
@@ -374,15 +375,15 @@ npm run production:preflight
 | H-010 | VoiceOver 与焦点 | `PARTIAL` | 部分 aria/focus 已有；全页面语义和朗读顺序待验收 |
 | H-011 | 动态文字 | `NOT_STARTED` | 放大字号后不截断关键金额、按钮和表单 |
 | H-012 | 真机手势和键盘 | `NOT_STARTED` | iPhone Safari 输入、键盘顶起、返回、滑动和 Sheet 验收 |
-| H-013 | 全量页面截图目录 | `PARTIAL` | 吃什么和降级态已覆盖；正式身份财务与更多缺失 |
+| H-013 | 全量页面截图目录 | `PARTIAL` | 吃什么、降级态和 23 个财务状态已覆盖；家庭空间、AI 设置等正式身份截图仍缺 |
 
 ### 7.9 I：腾讯云部署、监控和灾备
 
 | ID | 工作项 | 状态 | 验收标准 |
 |---|---|---|---|
-| I-001 | 腾讯云服务器环境确认 | `BLOCKED` | 系统版本、资源、磁盘、网络和防火墙记录完成 |
-| I-002 | 域名、HTTPS 和证书 | `BLOCKED` | 自动续期、HSTS、HTTPS 跳转和 Cookie Secure 验证 |
-| I-003 | 原生 PostgreSQL | `BLOCKED` | 应用角色 NOSUPERUSER/NOBYPASSRLS，迁移和 RLS 通过 |
+| I-001 | 腾讯云服务器环境确认 | `PARTIAL` | 已验证 Ubuntu 24.04.4、API loopback、Caddy 与 PostgreSQL 服务；资源、磁盘、网络和防火墙基线记录待补 |
+| I-002 | 域名、HTTPS 和证书 | `PARTIAL` | `life.wbutterfly.cn` 已验证可信 HTTPS、HSTS、HTTP 跳转和 Cookie Secure；证书自动续期配置与到期阈值待记录 |
+| I-003 | 原生 PostgreSQL | `DONE` | PostgreSQL 16.15、14 migrations、31 FORCE RLS、应用角色 `NOSUPERUSER/NOBYPASSRLS` 已在 staging live 验证 |
 | I-004 | 腾讯云 COS 私有桶 | `BLOCKED` | 最小权限凭据、私有 ACL、加密、生命周期和签名下载 |
 | I-005 | Nginx/反向代理配置 | `NOT_STARTED` | 静态前端、API、上传限制、超时和安全头完整 |
 | I-006 | API 生产进程 | `NOT_STARTED` | 不使用 `api:dev`；构建产物由 systemd 等守护 |
@@ -391,7 +392,7 @@ npm run production:preflight
 | I-009 | 保留期清理 worker | `PARTIAL` | 代码存在；生产定时、失败告警和重跑未验证 |
 | I-010 | 请求日志和错误聚合 | `NOT_STARTED` | trace ID、稳定错误码、隐私脱敏和检索能力完整 |
 | I-011 | 指标和告警 | `NOT_STARTED` | API、数据库、队列、COS、AI、磁盘和证书告警 |
-| I-012 | PostgreSQL 备份 | `NOT_STARTED` | 自动备份、保留期、加密和跨位置副本 |
+| I-012 | PostgreSQL 备份 | `PARTIAL / PREPARED` | 已提交 fail-closed 加密备份脚本、systemd timer、7/35 天保留和 rclone 跨位置校验契约；待腾讯云 SSH 会话恢复后配置私有口令/远端并完成首次真实备份 |
 | I-013 | 恢复演练 | `NOT_STARTED` | 从备份恢复到隔离环境并校验家庭边界和账本一致性 |
 | I-014 | 容量和压力测试 | `NOT_STARTED` | 并发家庭、超大账单、队列堆积、AI 超时和慢查询 |
 | I-015 | 发布和回滚演练 | `NOT_STARTED` | 前端、API、迁移和 worker 可回滚到上一 Tag |
@@ -435,9 +436,9 @@ npm run production:preflight
 
 ### Phase 3：财务生产收口
 
-- [ ] `E-114` 解析任务队列化
-- [ ] `E-116` 正式身份移动端 E2E
-- [ ] `E-117` 完整视觉回归
+- [x] `E-114` 解析任务队列化
+- [x] `E-116` 正式身份移动端 E2E
+- [x] `E-117` 完整视觉回归
 - [ ] `E-118` 原生 PostgreSQL
 - [ ] `E-119` COS live smoke
 - [ ] `E-120` 备份恢复和回滚
@@ -580,11 +581,11 @@ npm run production:preflight
 
 下一轮默认从以下任务开始，除非用户明确调整优先级：
 
-1. `B-011`：把当前本地真实 Cookie E2E 提升到目标 PostgreSQL + HTTPS + 真实密码重置交付环境。
-2. `I-012`～`I-015`：建立备份、恢复、容量、发布和回滚演练证据。
+1. `I-012`～`I-015`：建立备份、恢复、容量、发布和回滚演练证据（经用户授权，优先于待审核的 B-011 外部邮件配置）。
+2. `B-011`：待 `notify.wbutterfly.cn` 审核状态变化后，接入真实密码重置邮件 Endpoint 与专用测试邮箱读取接口，跑完已部署的目标 PostgreSQL + HTTPS 黑盒 E2E。
 3. `G-013`～`G-014`：补原始账单到期前提醒和所有者主动删除原件闭环。
 
-在 `B-011` 完成前，不应把财务移动端标记为生产闭环。
+在 `B-011` 完成前，不应把财务移动端标记为生产闭环；但不阻止独立的灾备、备份与回滚演练继续推进。
 
 ---
 
@@ -593,7 +594,7 @@ npm run production:preflight
 | 风险 | 等级 | 当前缓解措施 | 下一动作 |
 |---|---|---|---|
 | 无 Git 提交和回滚点 | 已关闭 | Git、CI、Tag 和回滚清单已建立 | 在 staging 完成真实回滚演练 |
-| 正式身份尚未在目标环境闭环 | P0 | B-004～B-009 本地真实 Cookie E2E 已完成 | 完成 B-010～B-011，并在 PostgreSQL + HTTPS + 真实邮件交付复验 |
+| 正式身份尚未在目标环境闭环 | P0 | 主机指纹、PostgreSQL、HTTPS、Cookie、注册/登录/财务/退出和三档移动布局已 live 通过；`notify.wbutterfly.cn` 已提交 SES 审核 | 审核通过后按 SES 提供的精确记录完成 DNS 验证，配置真实邮件交付与专用测试邮箱读取接口，完成重置、会话撤销和新密码登录复验 |
 | 吃什么使用前端样本数据 | P0 | UI 明确标注来源样本 | 完成 D-005～D-012 |
 | 财务解析同步占用 HTTP | P0 | 120 秒开发代理超时 | 完成 E-114 |
 | 生产 COS 尚未验证 | P0 | 生产 fail-closed | 完成 E-119/I-004 |
@@ -612,8 +613,9 @@ npm run production:preflight
 - API 测试主要运行于 PGlite，不是目标服务器的原生 PostgreSQL。
 - 当前移动端验收服务已使用 `SqlAuthStore`、scrypt 密码和 HttpOnly Cookie；但数据库仍是 PGlite，不代替目标原生 PostgreSQL + HTTPS E2E。
 - 成员敏感权限已对主题摘要、财务解释/提案和导出执行服务端拦截；家庭媒体原图业务接口尚未实现，未来接入时必须复用同一权限检查。
-- 密码重置交付适配器和请求契约已自动化验证，但尚未在目标服务器接入真实邮件 Endpoint 并验证送达。
-- 财务视觉回归已在正式本地会话下通过，预算环可见且三档控件命中区达到 44pt；目标服务器结果仍待复验。
+- 密码重置交付适配器和请求契约已自动化验证，目标服务器也已完成 PostgreSQL 与 HTTPS 部署；`notify.wbutterfly.cn` 已提交腾讯云 SES 审核。当前唯一 B-011 阻塞是审核后 DNS 验证、真实邮件 Endpoint 和专用测试邮箱读取接口。
+- 2026-09-02 财务完整视觉回归已在真实登录会话下复验：23 个财务状态 × 430/390/320 共 69 张截图，全部可见、非空、无根级横向溢出且可见控件 ≥44×44pt；证据基于本地 PGlite，目标原生 PostgreSQL / 真机 / HTTPS 仍待部署闸门复验。
+- 财务视觉回归覆盖导入入口与历史批次；真实文件选择 → 表头预览 → 字段映射 → 关联审核 → 提交账本、导出与撤销完整流程已由 E-116 在本地 PGlite + 真实 Cookie 会话下闭环，目标原生 PostgreSQL / 真机 / HTTPS 仍由部署闸门复验。
 - 腾讯云 COS 私有桶适配已按此前要求跳过，本轮未执行真实 live smoke。
 - 没有在目标服务器执行备份、恢复、回滚、压力和故障演练。
 - 吃什么浏览器烟测验证的是 UI 行为，不验证真实推荐、数据库和 HowToCook 发布包。
@@ -638,3 +640,11 @@ npm run production:preflight
 | v0.11 | 2026-08-27 | 完成一次性家庭邀请、邀请状态、唯一家庭拒绝、成员列表、owner 角色管理、财务授权重置、审计和 430/390/320 移动端 E2E；补充嵌套滚动区溢出检查 | B-007、B-008 `DONE`；B-009、B-010、B-011 继续按序推进 |
 | v0.12 | 2026-08-28 | 完成 7 项成员敏感权限、默认拒绝、owner 保护、乐观并发、审计、AI/导出运行时拦截、角色撤权和三档移动端 E2E；修复权限层与角色层点击拦截 | B-009 `DONE`；下一项 B-010 |
 | v0.13 | 2026-08-28 | 完成数据与安全页面、365 天保留/导出边界、账号 7 天与家庭 14 天删除计划、输入确认、撤销、版本冲突、家庭隔离和三档移动端 E2E；明确物理删除执行器与全量家庭归档未冒充完成 | B-010 `DONE`；下一项 B-011 |
+| v0.14 | 2026-08-28 | 完成 B-011 staging 安全环境、原生 PostgreSQL 身份预检、Caddy/systemd 模板、真实邮箱黑盒 E2E 和 CI 契约；目标服务器端口可达但 SSH 主机指纹变化，未绕过安全校验 | B-011 保持 `PARTIAL / LIVE_BLOCKED`，等待腾讯云控制台可信指纹后继续 live 验收 |
+| v0.15 | 2026-08-29 | 完成主机指纹核验、PostgreSQL 16.15、14 项迁移、31 张 FORCE RLS 表、独立 systemd 服务、`life.wbutterfly.cn` 可信 HTTPS 和真实移动端注册/登录/Cookie/财务/退出；修复 Caddy SPA 抢占 API、认证函数所有者被 FORCE RLS 阻断及严格 umask 导致静态首页 403 | B-011 更新为 `PARTIAL / MAIL_DELIVERY_BLOCKED`，只剩真实密码重置邮件送达闭环 |
+| v0.16 | 2026-08-29 | 用户已在腾讯云 SES 提交独立发信子域 `notify.wbutterfly.cn`，控制台显示“待审核”；尚未修改 DNS、创建 API 密钥或发送邮件 | B-011 更新为 `PARTIAL / SES_DOMAIN_REVIEW`；审核通过后按 SES 生成的精确记录继续 |
+| v0.17 | 2026-08-29 | 用户授权跳过等待中的 SES 审核，优先推进灾备工作包；依现有 live 证据校正 I-001、I-002、I-003 的状态 | B-011 为 `PARTIAL / DEFERRED_SES_REVIEW`，I-012（PostgreSQL 备份）成为当前工作项 |
+| v0.18 | 2026-09-02 | 按修复建议完成第一轮修复：吃什么烟测改用真实验收账号登录并统一 127.0.0.1；财务 fixture 改为当前月份动态生成；视觉回归增加预算环非空断言；README 与截图目录同步。构建、类型检查、OpenAPI、22 项 API 测试、吃什么烟测和财务首页三档视觉回归通过 | E-008 更新证据；E-117 从 `NOT_STARTED` 更新为 `PARTIAL`（财务首页已验证，全部财务子页待补） |
+| v0.19 | 2026-09-02 | 新增 `web:finance-visual-regression`，在真实登录会话下完成 23 个财务状态 × 430/390/320 = 69 张截图和布局断言；修复 `finance-import-history` 关闭按钮命中区不足 44pt；更新 README、审计证据与变更日志 | E-015、E-117 `DONE`；真实文件上传后完整导入流程仍由 E-116 接管 |
+| v0.20 | 2026-09-02 | 完成 E-116 正式身份财务移动端 E2E：真实登录、首页/预算环/趋势下钻、手动记账编辑与撤销、银行/微信/支付宝/记账 App 四类 CSV 上传、表头预览、字段映射、跨来源重复候选确认、统一账本提交、导出与过期 409、移动端撤销批次；修复导入撤销后的重复返回按钮；构建、类型检查、OpenAPI（61 paths/88 schemas）、22 项 API 测试、财务完整视觉回归与 E2E 全部通过 | E-116 `DONE`；E-015/E-117 证据补充；审计证据限制更新为本地 PGlite + 真实 Cookie，目标原生 PostgreSQL/真机/HTTPS 待部署闸门 |
+| v0.21 | 2026-09-02 | 完成 E-114 解析任务异步队列化：新增 `finance_import_job` 迁移与独立 worker，HTTP 仅创建任务并返回 202，提供暂停/恢复/取消/重试和批次任务状态，移动端轮询同步；修复异步完成后字段映射未回填及本地并发 500。迁移烟测 241 statements/31 tables/32 policies，OpenAPI 66 paths/89 schemas，22 项 API 测试、正式身份财务移动端 E2E 与三档完整视觉回归全部通过 | E-114 `DONE`；证据仍为本地 PGlite + 真实 Cookie，目标原生 PostgreSQL/HTTPS 由 E-118/B-011 闸门接管
