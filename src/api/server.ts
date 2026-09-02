@@ -15,6 +15,7 @@ import { InMemoryAuthAttemptLimiter, type AuthAttemptLimiter, type AuthRateLimit
 import { createPasswordResetDeliveryFromEnv, type PasswordResetDelivery } from "./password-reset-delivery.js";
 import { sensitiveCapabilities } from "./sensitive-permissions.js";
 import { isProductionDeployment, isSecureDeployment } from "./deployment-environment.js";
+import { isSameOriginRequest } from "./same-origin.js";
 import { ImportSecurityError, MAX_IMPORT_FILE_BYTES, assertImportFileName, assertImportFileSize, validateImportFile } from "./finance-import-security.js";
 
 const sourceTypes = ["bank", "alipay", "wechat", "bookkeeping_app", "other"] as const;
@@ -158,7 +159,20 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     trustProxy: isSecureDeployment() ? ["127.0.0.1", "::1"] : false,
   });
   app.addContentTypeParser("application/octet-stream", { parseAs: "buffer" }, (_request, body, done) => done(null, body));
-  app.addHook("preHandler", async (request) => {
+  app.addHook("onSend", async (_request, reply, payload) => {
+    reply.header("x-content-type-options", "nosniff");
+    reply.header("x-frame-options", "DENY");
+    reply.header("referrer-policy", "strict-origin-when-cross-origin");
+    reply.header("permissions-policy", "camera=(), microphone=(), geolocation=()");
+    reply.header("content-security-policy", "default-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; frame-src 'none'; object-src 'none'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; font-src 'self' data:");
+    if (isSecureDeployment()) reply.header("strict-transport-security", "max-age=31536000; includeSubDomains");
+    return payload;
+  });
+  app.addHook("preHandler", async (request, reply) => {
+    if (request.url.startsWith("/api/") && !isSameOriginRequest(request, process.env.LIFE_PUBLIC_APP_URL?.trim())) {
+      reply.code(403).send({ code: "CSRF_ORIGIN_DENIED", message: "请求来源不被允许", trace_id: request.id });
+      return;
+    }
     if (!request.url.startsWith("/api/")) return;
     if (authStore && !options.resolveScope) {
       const session = await authStore.resolveSession(cookieValue(request, sessionCookieName()) ?? "");

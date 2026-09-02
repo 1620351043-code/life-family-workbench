@@ -82,7 +82,15 @@ export function assertHttpsHeaders(response) {
   if (response.status < 200 || response.status >= 400) throw new Error(`B-011 应用响应状态异常：${response.status}`);
   const hsts = response.headers.get("strict-transport-security");
   if (!hsts || !/max-age=\d+/i.test(hsts)) throw new Error("B-011 HTTPS 响应缺少有效 HSTS");
-  return { hsts };
+  const frame = response.headers.get("x-frame-options");
+  if (frame !== "DENY") throw new Error("B-011 HTTPS 响应缺少 X-Frame-Options: DENY");
+  const nosniff = response.headers.get("x-content-type-options");
+  if (nosniff !== "nosniff") throw new Error("B-011 HTTPS 响应缺少 X-Content-Type-Options: nosniff");
+  const referrer = response.headers.get("referrer-policy");
+  if (referrer !== "strict-origin-when-cross-origin") throw new Error("B-011 HTTPS 响应缺少 Referrer-Policy");
+  const csp = response.headers.get("content-security-policy");
+  if (!csp || !csp.includes("frame-ancestors 'none'") || !csp.includes("object-src 'none'")) throw new Error("B-011 HTTPS 响应缺少安全 CSP");
+  return { hsts, frame, nosniff, referrer, csp };
 }
 
 export function assertHttpRedirect(response, baseUrl) {
