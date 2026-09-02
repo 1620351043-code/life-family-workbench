@@ -804,6 +804,23 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     return { batches: await repository.listImportBatches(query.page_size) };
   });
 
+  app.get("/api/finance/import-retention", async (request, reply) => {
+    const scope = requireScope(request, reply, resolveScope);
+    if (!scope) return;
+    const repository = options.financeFactory?.(scope);
+    if (!repository) return requireFactory(reply, options.financeFactory);
+    const query = z.object({ notice_days: z.coerce.number().int().min(1).max(90).default(30), limit: z.coerce.number().int().min(1).max(50).default(50) }).parse(request.query);
+    return { items: await repository.listRawImportRetention(query.notice_days, query.limit) };
+  });
+
+  app.delete<{ Params: { batchId: string } }>("/api/finance/import-batches/:batchId/raw", async (request, reply) => {
+    const scope = requireScope(request, reply, resolveScope);
+    if (!scope) return;
+    const repository = options.financeFactory?.(scope);
+    if (!repository) return requireFactory(reply, options.financeFactory);
+    return repository.deleteRawImportFile(z.string().uuid().parse(request.params.batchId));
+  });
+
   app.post("/api/finance/import-batches", async (request, reply) => {
     const scope = requireScope(request, reply, resolveScope);
     if (!scope) return;

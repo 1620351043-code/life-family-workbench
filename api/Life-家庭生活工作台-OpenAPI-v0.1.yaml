@@ -1489,7 +1489,71 @@ paths:
                 $ref: '#/components/schemas/ImportBatch'
         '400':
           $ref: '#/components/responses/BadRequest'
+  /api/finance/import-retention:
+    get:
+      tags: [Finance Import]
+      operationId: listRawImportRetention
+      summary: 获取到期前需要提醒的原始账单
+      description: 返回当前家庭尚未删除且将在 notice_days 内到期的原始账单元数据；所有者用于主动删除原件。
+      parameters:
+        - name: notice_days
+          in: query
+          required: false
+          description: 到期提醒窗口，默认 30 天
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 90
+            default: 30
+        - name: limit
+          in: query
+          required: false
+          description: 返回上限，默认 50
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 50
+      responses:
+        '200':
+          description: 到期提醒列表
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/RawImportRetentionItem'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/finance/import-batches/{batchId}/raw:
+    delete:
+      tags: [Finance Import]
+      operationId: deleteRawImportFile
+      summary: 家庭所有者主动删除原始账单文件
+      description: 只删除隔离对象存储中的原始文件；正式账本、来源记录、关联结论和审计日志保留。
+      parameters:
+        - $ref: '#/components/parameters/BatchId'
+      responses:
+        '200':
+          description: 删除完成后的批次
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportBatch'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '502':
+          $ref: '#/components/responses/BadGateway'
   /api/finance/import-batches/{batchId}/upload:
+
     post:
       tags: [Finance Import]
       operationId: uploadImportBatchFile
@@ -1988,7 +2052,14 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
+    BadGateway:
+      description: 依赖的对象存储或后台处理暂不可用
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
     Unavailable:
+
       description: 外部 AI 或基础设施暂不可用
       content:
         application/json:
@@ -3461,7 +3532,7 @@ components:
           description: 该账单来源的入账账户；未设置时导入流水保持待入账
     ImportBatch:
       type: object
-      required: [id, file_name, file_size, source_type, status, version, raw_retention_until]
+      required: [id, file_name, file_size, source_type, status, version, raw_retention_until, raw_delete_status]
       properties:
         id:
           type: string
@@ -3489,6 +3560,15 @@ components:
         raw_retention_until:
           type: string
           format: date-time
+        raw_delete_status:
+          $ref: '#/components/schemas/RawImportDeleteStatus'
+        raw_deleted_at:
+          type: string
+          format: date-time
+          nullable: true
+        raw_delete_error:
+          type: string
+          nullable: true
         counts:
           type: object
           additionalProperties:
@@ -3499,7 +3579,44 @@ components:
             - $ref: '#/components/schemas/FinanceImportJob'
         header_preview:
           $ref: '#/components/schemas/ImportHeaderPreview'
+    RawImportDeleteStatus:
+      type: string
+      enum: [pending, running, deleted, failed, not_required]
+    RawImportRetentionItem:
+      type: object
+      required: [id, file_name, source_type, status, raw_retention_until, days_until_expiry, raw_delete_status, raw_deleted_at, raw_delete_error, row_count]
+      properties:
+        id:
+          type: string
+          format: uuid
+        file_name:
+          type: string
+        source_type:
+          type: string
+          enum: [bank, alipay, wechat, bookkeeping_app, other]
+        status:
+          type: string
+          enum: [created, uploaded, scanning, header_detected, mapping_pending, normalized, matching, reconciliation_pending, confirmed, committed, failed, cancelled, revoked]
+        raw_retention_until:
+          type: string
+          format: date-time
+        days_until_expiry:
+          type: integer
+          minimum: 0
+        raw_delete_status:
+          $ref: '#/components/schemas/RawImportDeleteStatus'
+        raw_deleted_at:
+          type: string
+          format: date-time
+          nullable: true
+        raw_delete_error:
+          type: string
+          nullable: true
+        row_count:
+          type: integer
+          minimum: 0
     ImportHeaderPreview:
+
       type: object
       required: [sheets]
       properties:

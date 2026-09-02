@@ -1,8 +1,16 @@
 import { useEffect, useState } from "react";
-import { dataRightsApi, type DataDeletionRequest, type DataRightsSummary } from "../api";
+import { dataRightsApi, financeApi, type DataDeletionRequest, type DataRightsSummary, type RawImportRetentionItem } from "../api";
 import { BunnyMark } from "./BunnyMark";
 
 type DeletionType = DataDeletionRequest["request_type"];
+
+const sourceLabels: Record<RawImportRetentionItem["source_type"], string> = {
+  bank: "银行",
+  alipay: "支付宝",
+  wechat: "微信支付",
+  bookkeeping_app: "记账应用",
+  other: "其他",
+};
 
 export function DataRightsPage(props: { householdName: string; onBack: () => void; onOpenFinance: () => void }) {
   const [summary, setSummary] = useState<DataRightsSummary | null>(null);
@@ -12,6 +20,11 @@ export function DataRightsPage(props: { householdName: string; onBack: () => voi
   const [phrase, setPhrase] = useState("");
   const [mutating, setMutating] = useState(false);
   const [success, setSuccess] = useState<string | null>(null);
+  const [rawImports, setRawImports] = useState<RawImportRetentionItem[]>([]);
+  const [rawLoading, setRawLoading] = useState(true);
+  const [rawError, setRawError] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<RawImportRetentionItem | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -22,6 +35,15 @@ export function DataRightsPage(props: { householdName: string; onBack: () => voi
   };
 
   useEffect(() => { void load(); }, []);
+  useEffect(() => { void loadRawImports(); }, []);
+
+  const loadRawImports = async () => {
+    setRawLoading(true);
+    setRawError(null);
+    try { setRawImports((await financeApi.listRawImportRetention()).items); }
+    catch (reason) { setRawError(reason instanceof Error ? reason.message : "原始账单提醒暂时无法加载"); }
+    finally { setRawLoading(false); }
+  };
 
   const schedule = async () => {
     if (!confirmType || mutating) return;
@@ -48,6 +70,21 @@ export function DataRightsPage(props: { householdName: string; onBack: () => voi
       setSuccess("删除计划已撤销，当前数据不会进入删除处理。");
     } catch (reason) { setError(reason instanceof Error ? reason.message : "删除计划撤销失败"); }
     finally { setMutating(false); }
+  };
+
+  const deleteRaw = async () => {
+    if (!deleteTarget || deleting) return;
+    setDeleting(true);
+    setError(null);
+    setSuccess(null);
+    setRawError(null);
+    try {
+      await financeApi.deleteRawImportFile(deleteTarget.id);
+      setSuccess("原始账单文件「" + deleteTarget.file_name + "」已删除，正式账本、来源记录与审计保留。");
+      setDeleteTarget(null);
+      await loadRawImports();
+    } catch (reason) { setRawError(reason instanceof Error ? reason.message : "原始账单删除失败，请稍后重试"); }
+    finally { setDeleting(false); }
   };
 
   if (loading) return <section className="data-rights-page"><DataRightsHeader onBack={props.onBack} /><div className="data-rights-loading" role="status">正在读取服务端生效的数据规则…</div></section>;
@@ -101,6 +138,29 @@ export function DataRightsPage(props: { householdName: string; onBack: () => voi
       </ul>
     </section>
 
+    {summary.role === "owner" && <section className="data-section raw-retention-section">
+      <div className="data-section-title"><div><span className="eyebrow">数据保留 · 所有者</span><h2>原始账单提醒</h2></div><span className="status-chip waiting">{rawLoading ? "读取中" : rawImports.length ? rawImports.length + " 项待处理" : "无临期文件"}</span></div>
+      <p className="raw-retention-lead">系统会在到期前 {summary.policies.original_bill_notice_days} 天展示提醒；所有者也可以主动删除原件，正式账本和来源记录不会因此消失。</p>
+      {rawError && <div className="data-rights-feedback error" role="alert">{rawError}<button type="button" onClick={() => setRawError(null)}>关闭</button></div>}
+      {rawLoading ? <div className="raw-retention-loading" role="status">正在核对原始账单保留状态…</div> : rawImports.length === 0 ? <div className="raw-retention-empty"><span aria-hidden="true">✓</span><strong>没有临期账单需要处理</strong><p>原始文件会在到期后自动进入隔离清理流程。</p></div> : <div className="raw-retention-list">{rawImports.map((item) => {
+        const statusText = item.raw_delete_status === "deleted" ? "已删除" : item.raw_delete_status === "not_required" ? "无需保留" : item.raw_delete_status === "running" ? "删除中" : item.raw_delete_status === "failed" ? "删除失败" : "待处理";
+        const statusClass = item.raw_delete_status === "deleted" ? "done" : item.raw_delete_status === "failed" ? "danger" : item.raw_delete_status === "not_required" ? "locked" : item.raw_delete_status === "running" ? "waiting" : "waiting";
+        const canDelete = summary.role === "owner" && item.raw_delete_status !== "deleted" && item.raw_delete_status !== "not_required";
+        return <article className={"raw-retention-row" + (item.raw_delete_status === "deleted" ? " deleted" : "")} key={item.id}>
+          <span className="raw-file-icon" aria-hidden="true">▤</span>
+          <div className="raw-retention-copy">
+            <strong>{item.file_name}</strong>
+            <p>{sourceLabels[item.source_type]} · {item.row_count} 行解析记录</p>
+            <small>{item.days_until_expiry <= 0 ? "已经到期" : item.days_until_expiry + " 天后到期"} · 保留至 {formatDate(item.raw_retention_until)}</small>
+            {item.raw_delete_error && <small className="raw-delete-error">上次失败：{item.raw_delete_error}</small>}
+          </div>
+          <div className="raw-retention-actions">
+            <span className={"status-chip " + statusClass}>{statusText}</span>
+            {canDelete && <button type="button" className="raw-delete-button" disabled={deleting || item.raw_delete_status === "running"} onClick={() => setDeleteTarget(item)}>{deleting && deleteTarget?.id === item.id ? "处理中…" : item.raw_delete_status === "failed" ? "重试删除" : "删除原件"}</button>}
+          </div>
+        </article>; })}</div>}
+    </section>}
+
     <section className="data-section danger-zone">
       <div className="data-section-title"><div><span className="eyebrow danger">不可逆操作</span><h2>账号与家庭删除</h2></div></div>
       <article>
@@ -126,6 +186,18 @@ export function DataRightsPage(props: { householdName: string; onBack: () => voi
         <div className="sheet-actions"><button type="button" className="secondary-button" disabled={mutating} onClick={() => setConfirmType(null)}>返回检查</button><button type="button" className="danger-button" disabled={phrase !== confirmationPhrase || mutating} onClick={() => void schedule()}>{mutating ? "正在创建…" : `开始 ${policy.wait_days} 天等待期`}</button></div>
       </section>
     </div>}
+    {deleteTarget && <div className="modal-backdrop" onMouseDown={(event) => event.currentTarget === event.target && !deleting && setDeleteTarget(null)}>
+      <section className="sheet raw-delete-sheet" role="dialog" aria-modal="true" aria-labelledby="raw-delete-title" aria-describedby="raw-delete-description">
+        <div className="sheet-handle" />
+        <div className="danger-symbol" aria-hidden="true">!</div>
+        <span className="eyebrow danger">不可逆操作</span>
+        <h2 id="raw-delete-title">删除原始账单文件？</h2>
+        <p id="raw-delete-description">「{deleteTarget.file_name}」将从隔离对象存储移除，无法再恢复。正式账本、已确认的来源记录、关联结论和审计日志都会保留。</p>
+        <div className="impact-list"><span>只删除原始文件</span><span>正式账本继续保留</span><span>删除后会写入审计记录</span></div>
+        <div className="sheet-actions"><button type="button" className="secondary-button" disabled={deleting} onClick={() => setDeleteTarget(null)}>返回检查</button><button type="button" className="danger-button" disabled={deleting} onClick={() => void deleteRaw()}>{deleting ? "正在删除…" : "确认删除原件"}</button></div>
+      </section>
+    </div>}
+
   </section>;
 }
 
