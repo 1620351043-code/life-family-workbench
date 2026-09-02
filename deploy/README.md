@@ -35,10 +35,11 @@ npm run production:preflight
 ```bash
 npm run api:dev
 npm run finance:export-worker
+npm run finance:import-worker
 npm run finance:retention-worker
 ```
 
-当前导出 worker 和保留期 worker 是一次性批处理入口，应由 systemd timer 或等价调度周期性触发，并为导入、导出、保留期清理配置失败告警。API 对外只经 HTTPS 反向代理，不能直接暴露 3100 端口。
+当前导入解析、导出和保留期 worker 是一次性批处理入口，应由 systemd timer 或等价调度周期性触发，并为导入、导出、保留期清理配置失败告警。API 对外只经 HTTPS 反向代理，不能直接暴露 3100 端口。
 
 ## 4. 发布验收
 
@@ -113,3 +114,27 @@ npm run staging:auth-e2e
 ```
 
 脚本将真实创建一个带 `B011-` 标记的 staging 家庭，验证 HTTP→HTTPS、HSTS、注册、第二会话、`/api/me`、Secure/HttpOnly/SameSite Cookie、真实重置邮件、旧会话撤销、旧密码失效、新密码登录、财务会话和退出。报告不会写入密码或重置链接；测试数据不允许指向 production。
+
+## 6. I-012 加密 PostgreSQL 备份
+
+仓库已提供 `scripts/postgres_backup.sh`、`deploy/life-staging-postgres-backup.service.example`、`deploy/life-staging-postgres-backup.timer.example` 和 `deploy/staging-backup.env.example`。它们尚未部署到服务器，不应因为文件存在而将 I-012 标记为完成。
+
+备份服务的安全边界：
+
+- 仅从 root 私有的 `/etc/life/staging-migration.env` 读取现有迁移数据库连接；不会将连接串写入日志、归档或 Git。
+- 每次先生成 PostgreSQL custom-format dump，并用 `pg_restore --list` 校验；再把 dump、核心账本计数和 manifest 打包为 AES-256 GPG 对称加密归档。
+- 只有加密归档和 SHA-256 校验和会落入 `/var/backups/life/staging/postgres`；明文临时文件处于 `0700` 的短生命周期工作目录，完成后删除。
+- 归档必须同时通过 `rclone copy --checksum` 与 `rclone check --checksum` 复制到专用异地 bucket/prefix，才会写入 `remote-verified.txt`，并开始本地/远端保留期清理。远端不可用时本次失败且不清理旧恢复点。
+- 默认保留 7 个本地日备份和 35 个异地日备份；远端必须是专用前缀，例如 `life-cos:life-backups/staging/postgres`，禁止指向 bucket 根或共享目录。
+
+首次部署前，在服务器上由 root 创建一个只用于备份的随机 GPG 口令文件、配置 root 私有 rclone 远端，并按以下方式安装 unit：
+
+```bash
+sudo install -o root -g root -m 0600 deploy/staging-backup.env.example /etc/life/staging-backup.env
+sudo install -o root -g root -m 0644 deploy/life-staging-postgres-backup.service.example /etc/systemd/system/life-staging-postgres-backup.service
+sudo install -o root -g root -m 0644 deploy/life-staging-postgres-backup.timer.example /etc/systemd/system/life-staging-postgres-backup.timer
+sudo systemctl daemon-reload
+sudo systemctl enable --now life-staging-postgres-backup.timer
+```
+
+首次手动运行前必须确认：备份口令文件为 `0600 root:root`、rclone 目标为空的专用前缀、`DATABASE_URL` 指向 staging 而非 production。执行一次 `sudo systemctl start life-staging-postgres-backup.service` 后，检查 `systemctl status`、journal、加密归档、SHA-256 文件和 `remote-verified.txt`；实际恢复到隔离库的演练归 I-013，不能用“备份成功”替代恢复验证。

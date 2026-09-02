@@ -3,13 +3,25 @@ import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
 const { chromium } = require("/Users/wrt/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright-core");
-const baseUrl = process.env.MOBILE_BASE_URL ?? "http://localhost:4173";
+const baseUrl = process.env.MOBILE_BASE_URL ?? "http://127.0.0.1:4173";
 const executablePath = process.env.BROWSER_EXECUTABLE ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+const authEmail = process.env.MOBILE_E2E_EMAIL ?? "mobile-e2e@example.invalid";
+const authPassword = process.env.MOBILE_E2E_PASSWORD ?? "mobile-e2e-password";
 
 async function openFood(page) {
   await page.goto(baseUrl, { waitUntil: "domcontentloaded", timeout: 10000 });
+  await ensureAuthenticated(page);
   await page.getByRole("button", { name: /吃什么/ }).click();
   await page.getByRole("heading", { name: "今晚吃什么？" }).waitFor();
+}
+
+async function ensureAuthenticated(page) {
+  await page.locator(".auth-card, .bottom-nav").first().waitFor({ state: "visible", timeout: 15000 });
+  if (!(await page.locator(".auth-card").isVisible())) return;
+  await page.locator('input[name="email"]').fill(authEmail);
+  await page.locator('input[name="password"]').fill(authPassword);
+  await page.getByRole("button", { name: "进入我的家庭" }).click();
+  await page.getByRole("navigation", { name: "主导航" }).waitFor();
 }
 
 const browser = await chromium.launch({ headless: true, executablePath });

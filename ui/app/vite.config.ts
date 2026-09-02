@@ -9,6 +9,7 @@ export default defineConfig({
   root,
   plugins: [react()],
   server: {
+    host: "127.0.0.1",
     port: 4173,
     proxy: { "/api": { target: process.env.LIFE_API_PROXY_TARGET ?? "http://127.0.0.1:3100", timeout: 120_000, proxyTimeout: 120_000 } },
   },

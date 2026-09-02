@@ -4,8 +4,10 @@ import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 const { chromium } = require("/Users/wrt/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright-core");
 
-const baseUrl = process.env.MOBILE_BASE_URL ?? "http://localhost:4173";
+const baseUrl = process.env.MOBILE_BASE_URL ?? "http://127.0.0.1:4173";
 const executablePath = process.env.BROWSER_EXECUTABLE ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+const authEmail = process.env.MOBILE_E2E_EMAIL ?? "mobile-e2e@example.invalid";
+const authPassword = process.env.MOBILE_E2E_PASSWORD ?? "mobile-e2e-password";
 const outputDir = "/Users/wrt/Documents/Codex/2026-08-23/new-chat/output/playwright/ui-pages";
 const viewport = { width: 430, height: 932 };
 
@@ -14,6 +16,7 @@ const browser = await chromium.launch({ headless: true, executablePath });
 const context = await browser.newContext({ viewport, deviceScaleFactor: 1 });
 const page = await context.newPage();
 const captured = [];
+let authenticationEnsured = false;
 
 async function save(name, fullPage = true) {
   const path = `${outputDir}/${name}.png`;
@@ -21,11 +24,24 @@ async function save(name, fullPage = true) {
   captured.push(path);
 }
 
+async function ensureAuthenticated() {
+  if (authenticationEnsured) return;
+  await page.locator(".auth-card, .bottom-nav").first().waitFor({ state: "visible", timeout: 15000 });
+  if (await page.locator(".auth-card").isVisible()) {
+    await page.locator('input[name="email"]').fill(authEmail);
+    await page.locator('input[name="password"]').fill(authPassword);
+    await page.getByRole("button", { name: "进入我的家庭" }).click();
+    await page.getByRole("navigation", { name: "主导航" }).waitFor();
+  }
+  authenticationEnsured = true;
+}
+
 async function reload() {
   // Vite keeps a hot-reload websocket open, so networkidle can never be a
   // reliable readiness signal for this catalog run.
   await page.goto(baseUrl, { waitUntil: "domcontentloaded", timeout: 10000 });
   await page.waitForTimeout(250);
+  await ensureAuthenticated();
 }
 
 async function clickText(name) {

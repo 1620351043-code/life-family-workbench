@@ -83,7 +83,7 @@
 .finance-section-heading p { margin-top: 5px; color: var(--life-text-secondary); font-size: var(--life-text-supporting); line-height: 1.4; }
 .finance-section-heading.compact { align-items: center; padding: 0 0 10px; }
 .finance-section-heading.compact h3 { font-size: 15px; }
-.text-button { min-height: 44px; padding: 0 4px; color: var(--life-accent); background: transparent; font-size: var(--life-text-compact); font-weight: 650; text-wrap: balance; }
+.text-button { min-width: 44px; min-height: 44px; padding: 0 4px; color: var(--life-accent); background: transparent; font-size: var(--life-text-compact); font-weight: 650; text-wrap: balance; }
 .budget-section { container-type: inline-size; }
 .budget-visual { margin-top: 12px; }
 .finance-ring-button { position: relative; display: grid; place-items: center; width: clamp(var(--life-budget-ring-min), 70cqi, var(--life-budget-ring-max)); min-width: var(--life-budget-ring-min); aspect-ratio: 1; padding: 0; border-radius: 50%; background: radial-gradient(circle, rgba(255,255,255,.92) 0 42%, rgba(255,255,255,.54) 43% 66%, rgba(255,255,255,.22) 67%); }
@@ -462,6 +462,10 @@
 .import-success-card { padding: 14px; border: 1px solid rgba(45,155,114,.2); border-radius: 16px; background: rgba(226,248,238,.62); }
 .import-success-card strong { color: var(--life-success); font-size: var(--life-text-supporting); }
 .import-success-card p { margin-top: 5px; color: var(--life-text-secondary); font-size: 11px; line-height: 1.45; }
+.import-revoke-button { border-color: rgba(201,77,105,.22); color: var(--life-danger); background: rgba(255,244,246,.72); }
+.import-revoke-confirm { display: grid; gap: 10px; padding: 13px; border: 1px solid rgba(201,77,105,.25); border-radius: 16px; background: rgba(255,244,246,.78); }
+.import-revoke-confirm strong { color: var(--life-danger); font-size: var(--life-text-supporting); }
+.import-revoke-confirm p { color: var(--life-text-secondary); font-size: 11px; line-height: 1.5; }
 .import-wizard-footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 13px; padding-top: 12px; border-top: 1px solid var(--life-line); }
 .import-status { align-self: start; padding: 5px 7px; border-radius: 8px; background: #eceaff; color: var(--life-accent-strong); font-size: 10px; white-space: nowrap; }
 .import-status.confirmed { background: #ddf5e9; color: var(--life-success); }
@@ -529,3 +533,5 @@
   .commit-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .commit-summary strong { font-size: 18px; }
 }
+.import-panel:has(.import-warning > .secondary-button.wide) > .secondary-button.wide:last-of-type { display: none; }
+/* 撤销态内已提供返回按钮，隐藏面板底部重复返回入口 */

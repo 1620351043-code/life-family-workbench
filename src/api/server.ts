@@ -20,7 +20,7 @@ const sourceTypes = ["bank", "alipay", "wechat", "bookkeeping_app", "other"] as 
 const overviewQuerySchema = z.object({ start: z.string().date(), end: z.string().date(), granularity: z.enum(["day", "week", "month", "quarter"]).default("day") });
 const pageQuerySchema = z.object({ page: z.coerce.number().int().min(1).default(1), page_size: z.coerce.number().int().min(1).max(100).default(50) });
 const transactionListQuerySchema = pageQuerySchema.extend({ start: z.string().date().optional(), end: z.string().date().optional(), direction: z.enum(["income", "expense", "transfer"]).optional(), account_id: z.string().uuid().optional(), import_batch_id: z.string().uuid().optional() });
-const createImportBatchSchema = z.object({ source_type: z.enum(sourceTypes), file_name: z.string().min(1).max(255), file_size: z.number().int().nonnegative(), file_sha256: z.string().regex(/^[a-f0-9]{64}$/i), object_key: z.string().min(1) });
+const createImportBatchSchema = z.object({ source_type: z.enum(sourceTypes), file_name: z.string().min(1).max(255), file_size: z.number().int().nonnegative(), file_sha256: z.string().regex(/^[a-f0-9]{64}$/i), object_key: z.string().min(1), account_id: z.string().uuid().nullable().optional() });
 const accountTypeSchema = z.enum(["bank", "cash", "wallet", "payment_platform", "other"]);
 const createAccountSchema = z.object({ name: z.string().trim().min(1).max(80), account_type: accountTypeSchema, currency: z.string().length(3).default("CNY"), opening_balance: z.string().regex(/^\d+(?:\.\d{1,4})?$/).default("0") });
 const updateAccountSchema = z.object({ name: z.string().trim().min(1).max(80), account_type: accountTypeSchema });
@@ -77,7 +77,7 @@ const deletionCancelSchema = z.object({ expected_version: z.number().int().min(1
 export type FinanceRepositoryFactory = (scope: FinanceScope) => FinanceRepository;
 export type FamilyRepositoryFactory = (scope: FinanceScope) => FamilyRepository;
 export type ScopeResolver = (request: FastifyRequest) => FinanceScope | null | Promise<FinanceScope | null>;
-export type ServerOptions = { financeFactory?: FinanceRepositoryFactory; familyFactory?: FamilyRepositoryFactory; resolveScope?: ScopeResolver; authStore?: AuthStore; authAttemptLimiter?: AuthAttemptLimiter; passwordResetDelivery?: PasswordResetDelivery; importObjectStore?: ImportObjectStore; importParser?: FinanceImportParser; exportRunner?: (scope: FinanceScope, jobId: string) => Promise<void> };
+export type ServerOptions = { financeFactory?: FinanceRepositoryFactory; familyFactory?: FamilyRepositoryFactory; resolveScope?: ScopeResolver; authStore?: AuthStore; authAttemptLimiter?: AuthAttemptLimiter; passwordResetDelivery?: PasswordResetDelivery; importObjectStore?: ImportObjectStore; importParser?: FinanceImportParser; exportRunner?: (scope: FinanceScope, jobId: string) => Promise<void>; importRunner?: (scope: FinanceScope, batchId: string, jobId: string) => Promise<unknown> };
 
 const requestScopes = new WeakMap<object, FinanceScope | null>();
 const requestSessions = new WeakMap<object, AuthSession>();
@@ -808,7 +808,7 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     const repository = options.financeFactory?.(scope);
     if (!repository) return requireFactory(reply, options.financeFactory);
     const input = createImportBatchSchema.parse(request.body);
-    const batch = await repository.createImportBatch({ sourceType: input.source_type as ImportSourceType, fileName: input.file_name, fileSize: input.file_size, fileSha256: input.file_sha256, objectKey: input.object_key });
+    const batch = await repository.createImportBatch({ sourceType: input.source_type as ImportSourceType, fileName: input.file_name, fileSize: input.file_size, fileSha256: input.file_sha256, objectKey: input.object_key, accountId: input.account_id });
     return reply.code(201).send(batch);
   });
 
@@ -868,10 +868,54 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     if (!repository) return requireFactory(reply, options.financeFactory);
     const batch = await repository.getImportBatch(request.params.batchId);
     if (!batch) throw new DomainError("NOT_FOUND", "导入批次不存在", 404);
-    if (["header_detected", "mapping_pending", "normalized", "matching", "reconciliation_pending", "confirmed", "committed"].includes(batch.status)) return batch;
-    if (batch.status !== "uploaded") throw new DomainError("IMPORT_STATE_CONFLICT", "当前批次不能开始解析", 409);
-    const parsed = await importParser.parse({ objectKey: importObjectKey(scope.householdId, request.params.batchId), sourceType: batch.source_type, fileName: batch.file_name });
-    return repository.stageParsedImport(request.params.batchId, parsed);
+    const job = await repository.enqueueImportParse(request.params.batchId);
+    const runImport = options.importRunner;
+    if (job.status === "queued" && runImport) setTimeout(() => { void runImport(scope, request.params.batchId, job.id); }, 0);
+    const updated = await repository.getImportBatch(request.params.batchId);
+    if (!updated) throw new DomainError("NOT_FOUND", "导入批次不存在", 404);
+    return reply.code(202).send({ batch: updated, job });
+  });
+
+  app.get<{ Params: { jobId: string } }>("/api/finance/import-jobs/:jobId", async (request, reply) => {
+    const scope = requireScope(request, reply, resolveScope);
+    if (!scope) return;
+    const repository = options.financeFactory?.(scope);
+    if (!repository) return requireFactory(reply, options.financeFactory);
+    const job = await repository.getImportParseJob(request.params.jobId);
+    if (!job) throw new DomainError("NOT_FOUND", "解析任务不存在或不属于当前家庭", 404);
+    return job;
+  });
+
+  app.post<{ Params: { jobId: string } }>("/api/finance/import-jobs/:jobId/pause", async (request, reply) => {
+    const scope = requireScope(request, reply, resolveScope);
+    if (!scope) return;
+    const repository = options.financeFactory?.(scope);
+    if (!repository) return requireFactory(reply, options.financeFactory);
+    return repository.pauseImportParseJob(request.params.jobId);
+  });
+
+  app.post<{ Params: { jobId: string } }>("/api/finance/import-jobs/:jobId/resume", async (request, reply) => {
+    const scope = requireScope(request, reply, resolveScope);
+    if (!scope) return;
+    const repository = options.financeFactory?.(scope);
+    if (!repository) return requireFactory(reply, options.financeFactory);
+    return repository.resumeImportParseJob(request.params.jobId);
+  });
+
+  app.post<{ Params: { jobId: string } }>("/api/finance/import-jobs/:jobId/cancel", async (request, reply) => {
+    const scope = requireScope(request, reply, resolveScope);
+    if (!scope) return;
+    const repository = options.financeFactory?.(scope);
+    if (!repository) return requireFactory(reply, options.financeFactory);
+    return repository.cancelImportParseJob(request.params.jobId);
+  });
+
+  app.post<{ Params: { jobId: string } }>("/api/finance/import-jobs/:jobId/retry", async (request, reply) => {
+    const scope = requireScope(request, reply, resolveScope);
+    if (!scope) return;
+    const repository = options.financeFactory?.(scope);
+    if (!repository) return requireFactory(reply, options.financeFactory);
+    return repository.retryImportParseJob(request.params.jobId);
   });
 
   app.post<{ Params: { batchId: string } }>("/api/finance/import-batches/:batchId/mapping-confirmation", async (request, reply) => {
@@ -926,6 +970,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const pool = databaseUrl ? new Pool({ connectionString: databaseUrl }) : null;
   const importObjectStore: ImportObjectStore = isProductionDeployment() ? createProductionCosObjectStoreFromEnv() : new LocalImportObjectStore();
   const authStore = pool ? new SqlAuthStore(pool as unknown as DbPool) : undefined;
+  const importParser = new LocalFinanceImportParser(importObjectStore);
   const passwordResetDelivery = createPasswordResetDeliveryFromEnv();
   const app = buildServer({
     financeFactory: pool ? ((scope) => new SqlFinanceRepository(pool as unknown as DbPool, scope, importObjectStore)) : undefined,
@@ -933,6 +978,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     authStore,
     passwordResetDelivery,
     importObjectStore,
+    importParser,
     exportRunner: pool ? ((scope, jobId) => runFinanceExportJob(pool as unknown as DbPool, scope, importObjectStore, jobId)) : undefined,
   });
   await app.listen({ host: "127.0.0.1", port: Number(process.env.PORT ?? 3100) });

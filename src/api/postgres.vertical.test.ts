@@ -8,6 +8,7 @@ import { SqlFamilyRepository } from "./family-repository.js";
 import type { DbPool } from "./database.js";
 import { financeExportObjectKey, importObjectKey, MemoryImportObjectStore } from "./import-storage.js";
 import { runQueuedFinanceExportWorker } from "./finance-export-worker.js";
+import { runFinanceImportJob } from "./finance-import-worker.js";
 import { runFinanceRetentionForHousehold } from "./finance-retention-worker.js";
 import { SqlAuthStore, hashPassword } from "./auth.js";
 import { InMemoryAuthAttemptLimiter } from "./auth-rate-limit.js";
@@ -46,6 +47,10 @@ function splitSql(input: string): string[] {
       }
       continue;
     }
+    if (!quote && char === "-" && next === "-") {
+      while (index < input.length && input[index] !== "\n") index += 1;
+      continue;
+    }
     if (!quote && char === "$" && next === "$" ) {
       dollarTag = "$$";
       buffer += "$$";
@@ -74,7 +79,7 @@ function splitSql(input: string): string[] {
 }
 
 async function applyMigrations(db: PGlite) {
-  for (const file of ["db/migrations/0001_life_core_finance.sql", "db/migrations/0002_finance_import_state.sql", "db/migrations/0003_life_app_privileges.sql", "db/migrations/0004_family_space_ai.sql", "db/migrations/0005_finance_ledger_foundation.sql", "db/migrations/0006_finance_management_foundation.sql", "db/migrations/0007_finance_permissions.sql", "db/migrations/0008_finance_ai.sql", "db/migrations/0009_finance_production_hardening.sql", "db/migrations/0010_auth_sessions.sql", "db/migrations/0011_password_reset.sql", "db/migrations/0012_household_invitations.sql", "db/migrations/0013_member_sensitive_permissions.sql", "db/migrations/0014_data_rights_deletion_requests.sql"]) {
+  for (const file of ["db/migrations/0001_life_core_finance.sql", "db/migrations/0002_finance_import_state.sql", "db/migrations/0003_life_app_privileges.sql", "db/migrations/0004_family_space_ai.sql", "db/migrations/0005_finance_ledger_foundation.sql", "db/migrations/0006_finance_management_foundation.sql", "db/migrations/0007_finance_permissions.sql", "db/migrations/0008_finance_ai.sql", "db/migrations/0009_finance_production_hardening.sql", "db/migrations/0010_auth_sessions.sql", "db/migrations/0011_password_reset.sql", "db/migrations/0012_household_invitations.sql", "db/migrations/0013_member_sensitive_permissions.sql", "db/migrations/0014_data_rights_deletion_requests.sql", "db/migrations/0015_finance_import_jobs.sql"]) {
     let sql = await readFile(file, "utf8");
     sql = sql.replace("CREATE EXTENSION IF NOT EXISTS pgcrypto;", "-- pgcrypto is not bundled in PGlite").replaceAll("DEFAULT gen_random_uuid()", "");
     for (const statement of splitSql(sql)) await db.query(statement);
@@ -601,19 +606,24 @@ describe("PostgreSQL finance vertical slice", () => {
       records: [{ source_row_number: 19, occurred_at: "2026-08-04 12:00:00", direction: "expense", amount: "50.0000", currency: "CNY", merchant: "家庭餐饮", external_id: "wechat-new-1", channel: "微信支付", remark: "", source_fingerprint: "wechat-new-fingerprint", sheet_name: "Sheet1" }],
       counts: { sheets: 1, rows: 1, skipped_rows: 0 },
     };
+    const importParser = { parse: async () => parsed };
     app = buildServer({
       resolveScope: () => scopeA,
       financeFactory: () => repository,
       familyFactory: () => familyRepository,
       importObjectStore: importStore,
-      importParser: { parse: async () => parsed },
+      importParser,
+      importRunner: (scope, _batchId, jobId) => runFinanceImportJob(pool, importParser, importStore, scope, jobId),
     });
     const created = await app.inject({ method: "POST", url: "/api/finance/import-batches", payload: { source_type: "wechat", file_name: "wechat.xlsx", file_size: rawFile.length, file_sha256: createHash("sha256").update(rawFile).digest("hex"), object_key: "client-key-is-ignored" } });
     const batchId = created.json().id as string;
     await app.inject({ method: "POST", url: `/api/finance/import-batches/${batchId}/upload`, headers: { "content-type": "application/octet-stream" }, payload: rawFile });
     const parsedBatch = await app.inject({ method: "POST", url: `/api/finance/import-batches/${batchId}/parse` });
-    expect(parsedBatch.statusCode).toBe(200);
-    expect(parsedBatch.json().status).toBe("header_detected");
+    expect(parsedBatch.statusCode).toBe(202);
+    expect(parsedBatch.json().job.status).toBe("queued");
+    await runFinanceImportJob(pool, importParser, importStore, scopeA, parsedBatch.json().job.id);
+    const refreshedBatch = await app.inject({ method: "GET", url: `/api/finance/import-batches/${batchId}` });
+    expect(refreshedBatch.json().status).toBe("header_detected");
     await db.query("RESET ROLE");
     const stagedRows = await db.query<{ rows: number; records: number }>("SELECT (SELECT COUNT(*)::int FROM import_row WHERE household_id = $1 AND import_batch_id = $2) AS rows, (SELECT COUNT(*)::int FROM source_record WHERE household_id = $1 AND import_batch_id = $2) AS records", [householdA, batchId]);
     expect(stagedRows.rows[0]).toEqual({ rows: 1, records: 1 });

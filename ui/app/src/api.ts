@@ -169,6 +169,8 @@ export type FinanceTransactionList = { items: FinanceTransactionListItem[]; pagi
 
 export type FinanceImportSource = "bank" | "alipay" | "wechat" | "bookkeeping_app" | "other";
 export type FinanceImportStatus = "created" | "uploaded" | "scanning" | "header_detected" | "mapping_pending" | "normalized" | "matching" | "reconciliation_pending" | "confirmed" | "committed" | "failed" | "cancelled" | "revoked";
+export type FinanceImportJobStatus = "queued" | "running" | "paused" | "succeeded" | "failed" | "cancelled";
+export type FinanceImportJob = { id: string; batch_id: string; status: FinanceImportJobStatus; attempts: number; max_attempts: number; next_attempt_at: string | null; error_code: string | null; error_message: string | null; created_at: string; started_at: string | null; completed_at: string | null };
 export type FinanceImportBatch = {
   id: string;
   file_name?: string;
@@ -179,6 +181,7 @@ export type FinanceImportBatch = {
   detected_sheet: string | null;
   raw_retention_until: string;
   counts: { rows: number; invalid?: number };
+  parse_job?: FinanceImportJob | null;
   field_mapping?: Record<string, string>;
   header_preview?: { sheets: Array<{ sheet_name: string | null; header_row: number | null; data_start_row: number | null; header_score: number; field_mapping: Record<string, string>; preview_rows: Array<{ row_number: number; values: string[]; role: "blank" | "metadata" | "header" | "data" }>; skipped_rows: number; empty?: boolean }> };
 };
@@ -294,12 +297,17 @@ export const financeApi = {
   voidTransaction: (transactionId: string, reason: string) => request<{ transaction_id: string }>(`/api/finance/transactions/${transactionId}/void`, { method: "POST", body: JSON.stringify({ reason }) }),
   getDrilldown: (ref: FinanceDrilldownRef, page = 1) => request<FinanceDrilldown>(`/api/finance/drilldowns/${ref.filter_id}?page=${page}&page_size=50`),
   getTransaction: (transactionId: string) => request<FinanceTransactionDetail>(`/api/finance/transactions/${transactionId}`),
-  createImportBatch: (input: { source_type: FinanceImportSource; file_name: string; file_size: number; file_sha256: string; object_key: string }) => request<FinanceImportBatch>("/api/finance/import-batches", { method: "POST", body: JSON.stringify(input) }),
+  createImportBatch: (input: { source_type: FinanceImportSource; file_name: string; file_size: number; file_sha256: string; object_key: string; account_id?: string | null }) => request<FinanceImportBatch>("/api/finance/import-batches", { method: "POST", body: JSON.stringify(input) }),
   listImportBatches: (pageSize = 20) => request<{ batches: FinanceImportBatch[] }>(`/api/finance/import-batches?page=1&page_size=${pageSize}`),
   listImportErrors: (batchId: string, pageSize = 200) => request<{ rows: FinanceImportErrorRow[] }>(`/api/finance/import-batches/${batchId}/errors?page=1&page_size=${pageSize}`),
   uploadImportFile: (batchId: string, file: File) => request<FinanceImportBatch>(`/api/finance/import-batches/${batchId}/upload`, { method: "POST", headers: { "content-type": "application/octet-stream" }, body: file }),
-  parseImportBatch: (batchId: string) => request<FinanceImportBatch>(`/api/finance/import-batches/${batchId}/parse`, { method: "POST" }),
+  parseImportBatch: (batchId: string) => request<{ batch: FinanceImportBatch; job: FinanceImportJob }>(`/api/finance/import-batches/${batchId}/parse`, { method: "POST" }),
   getImportBatch: (batchId: string) => request<FinanceImportBatch>(`/api/finance/import-batches/${batchId}`),
+  getImportParseJob: (jobId: string) => request<FinanceImportJob>(`/api/finance/import-jobs/${jobId}`),
+  pauseImportParseJob: (jobId: string) => request<FinanceImportJob>(`/api/finance/import-jobs/${jobId}/pause`, { method: "POST" }),
+  resumeImportParseJob: (jobId: string) => request<FinanceImportJob>(`/api/finance/import-jobs/${jobId}/resume`, { method: "POST" }),
+  cancelImportParseJob: (jobId: string) => request<FinanceImportJob>(`/api/finance/import-jobs/${jobId}/cancel`, { method: "POST" }),
+  retryImportParseJob: (jobId: string) => request<FinanceImportJob>(`/api/finance/import-jobs/${jobId}/retry`, { method: "POST" }),
   confirmImportHeader: (batchId: string, input: { sheet_name: string; header_row: number; data_start_row: number; data_end_row?: number }) => request<FinanceImportBatch>(`/api/finance/import-batches/${batchId}/header-confirmation`, { method: "POST", body: JSON.stringify(input) }),
   confirmImportMapping: (batchId: string, input: { mapping: Record<string, string>; parser_version: string }) => request<FinanceImportBatch>(`/api/finance/import-batches/${batchId}/mapping-confirmation`, { method: "POST", body: JSON.stringify(input) }),
   getImportReconciliation: (batchId: string) => request<FinanceReconciliationResponse>(`/api/finance/import-batches/${batchId}/reconciliation?page=1&page_size=50`),

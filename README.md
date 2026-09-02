@@ -35,16 +35,17 @@ npm run web:typecheck
 npm run web:build
 npm run web:auth-e2e
 npm run web:visual-regression
+npm run web:finance-visual-regression
 ```
 
-`web:auth-e2e` 和 `web:visual-regression` 需要先启动 `scripts/mobile_e2e_server.ts` 与 Vite 开发服务；测试会使用真实 `SqlAuthStore`、PGlite 和 HttpOnly Cookie，不使用请求头伪造身份。
+`web:food-smoke`、`web:auth-e2e`、`web:visual-regression`、`web:finance-visual-regression` 和 `web:screenshot-catalog` 都需要先启动 `scripts/mobile_e2e_server.ts` 与 Vite 开发服务；这些测试使用真实 `SqlAuthStore`、PGlite 和 HttpOnly Cookie，不使用请求头伪造身份。
 
-生产定时任务：`npm run finance:export-worker`、`npm run finance:retention-worker`。两者都要求 `DATABASE_URL` 和腾讯云 COS 环境变量；缺少生产对象存储配置时必须失败启动，不回退到本地文件。
+生产定时任务：`npm run finance:import-worker`、`npm run finance:export-worker`、`npm run finance:retention-worker`。三者都要求 `DATABASE_URL`，导入和导出 worker 还需要腾讯云 COS 环境变量；缺少生产对象存储配置时必须失败启动，不回退到本地文件。
 
 生产发布前执行 `npm run cos:live-smoke`，在 `NODE_ENV=production`、真实 `DATABASE_URL`、COS 凭据和 `LIFE_COS_LIVE_SMOKE=true` 同时具备时验证私有上传、AES256 加密、读取、HTTPS 签名下载和删除闭环。
 
 目标服务器迁移、生产 preflight 和部署步骤见 `deploy/README.md`；环境变量模板见 `.env.example`。
 
-移动端开发页面使用 `npm run web:dev`，默认端口为 `4173`；API 开发服务仍使用 `npm run api:dev`，默认端口为 `3100`。前端通过 Vite 代理访问 `/api`。
+移动端开发页面使用 `npm run web:dev`，默认绑定 `127.0.0.1:4173`；API 开发服务仍使用 `npm run api:dev`，默认端口为 `3100`。前端通过 Vite 代理访问 `/api`。
 
 当前默认开发环境不会自动连接数据库；没有有效的家庭会话和 PostgreSQL 配置时，API 应明确返回未授权或未配置，而不是把演示数据伪装成真实数据。

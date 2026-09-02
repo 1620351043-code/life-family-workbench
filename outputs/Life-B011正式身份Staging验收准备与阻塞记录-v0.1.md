@@ -2,13 +2,13 @@
 
 日期：2026-08-29
 
-状态：`PARTIAL / SES_DOMAIN_REVIEW`
+状态：`PARTIAL / DEFERRED_SES_REVIEW`
 
 适用范围：原生 PostgreSQL、HTTPS、正式 Cookie、真实密码重置交付的移动端黑盒 E2E
 
 ## 1. 当前结论
 
-B-011 已从“服务器不可进入”推进到“真实 PostgreSQL、HTTPS、注册、登录、正式 Cookie、财务身份态和退出均 live 通过”。2026-08-29 已在腾讯云 SES 提交独立发信子域 `notify.wbutterfly.cn`，控制台状态为“待审核”。审核和后续 DNS 身份验证完成前，真实密码重置邮件交付与专用测试邮箱读取接口仍不可配置，因此本项不能标记 `DONE`，也不能创建生产发布 Tag。
+B-011 已从“服务器不可进入”推进到“真实 PostgreSQL、HTTPS、注册、登录、正式 Cookie、财务身份态和退出均 live 通过”。2026-08-29 已在腾讯云 SES 提交独立发信子域 `notify.wbutterfly.cn`，控制台状态为“待审核”。用户已明确决定暂时跳过该外部审核，优先推进独立的灾备和发布演练工作包。审核和后续 DNS 身份验证完成前，真实密码重置邮件交付与专用测试邮箱读取接口仍不可配置，因此本项不能标记 `DONE`，也不能创建生产发布 Tag。
 
 腾讯云 COS 私有桶不属于本切片。staging 继续使用 `/var/lib/life/staging-imports` 隔离目录；这不关闭 `E-119/I-004`。
 
@@ -60,7 +60,7 @@ PGlite 未暴露认证 `SECURITY DEFINER` 函数所有者无法穿过 `FORCE RLS
 | 财务正式身份页 | `PASS`，真实 PostgreSQL 空账本正常展示 |
 | 退出与会话失效 | `PASS`，Cookie 清除，`/api/me` 返回 401 |
 | 430/390/320 布局 | `PASS`，无根级横向溢出，未发现小于 44pt 的可见控件 |
-| 密码重置真实送达 | `BLOCKED / SES_DOMAIN_REVIEW`，`notify.wbutterfly.cn` 已提交，等待腾讯云审核后读取其生成的 DNS 验证记录；真实邮件交付 Endpoint 和测试邮箱读取接口尚未配置 |
+| 密码重置真实送达 | `DEFERRED / SES_DOMAIN_REVIEW`，`notify.wbutterfly.cn` 已提交，等待腾讯云审核后读取其生成的 DNS 验证记录；真实邮件交付 Endpoint 和测试邮箱读取接口尚未配置 |
 
 浏览器验收使用独立 `B011-LIVE-*` staging 家庭；未读取、上传或提交真实账单。
 

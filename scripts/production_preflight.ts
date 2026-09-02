@@ -30,7 +30,7 @@ try {
   const dbRole = role.rows[0];
   if (!dbRole || dbRole.rolsuper || dbRole.rolbypassrls) throw new Error("生产应用连接必须使用 NOSUPERUSER、NOBYPASSRLS 角色");
 
-  const requiredTables = ["household", "app_user", "household_member", "user_session", "password_reset_token", "finance_export_job", "import_batch", "ai_memory_artifact"];
+  const requiredTables = ["household", "app_user", "household_member", "user_session", "password_reset_token", "finance_export_job", "finance_import_job", "import_batch", "ai_memory_artifact"];
   const tableRows = await pool.query<{ relname: string; relrowsecurity: boolean; relforcerowsecurity: boolean }>(
     `SELECT c.relname, c.relrowsecurity, c.relforcerowsecurity
        FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
@@ -39,7 +39,7 @@ try {
   );
   const found = new Map(tableRows.rows.map((row) => [row.relname, row]));
   for (const table of requiredTables) if (!found.has(table)) throw new Error(`生产数据库缺少表 ${table}，请先执行 npm run db:migrate`);
-  for (const table of ["household_member", "import_batch", "finance_export_job", "ai_memory_artifact"]) {
+  for (const table of ["household_member", "import_batch", "finance_export_job", "finance_import_job", "ai_memory_artifact"]) {
     const row = found.get(table);
     if (!row?.relrowsecurity || !row.relforcerowsecurity) throw new Error(`生产数据库表 ${table} 未启用 FORCE ROW LEVEL SECURITY`);
   }

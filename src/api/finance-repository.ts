@@ -38,6 +38,8 @@ export type FinanceOverview = {
 
 export type ImportSourceType = "bank" | "alipay" | "wechat" | "bookkeeping_app" | "other";
 export type ImportStatus = "created" | "uploaded" | "scanning" | "header_detected" | "mapping_pending" | "normalized" | "matching" | "reconciliation_pending" | "confirmed" | "committed" | "failed" | "cancelled" | "revoked";
+export type FinanceImportJobStatus = "queued" | "running" | "paused" | "succeeded" | "failed" | "cancelled";
+export type FinanceImportJob = { id: string; batch_id: string; status: FinanceImportJobStatus; attempts: number; max_attempts: number; next_attempt_at: string | null; error_code: string | null; error_message: string | null; created_at: string; started_at: string | null; completed_at: string | null };
 export type ImportBatch = {
   id: string;
   file_name: string;
@@ -49,11 +51,12 @@ export type ImportBatch = {
   detected_sheet: string | null;
   raw_retention_until: string;
   counts: { rows: number; invalid?: number };
+  parse_job?: FinanceImportJob | null;
   field_mapping?: Record<string, string>;
   header_preview?: { sheets: Array<{ sheet_name: string | null; header_row: number | null; data_start_row: number | null; header_score: number; field_mapping: Record<string, string>; preview_rows: ParsedImportPreviewRow[]; skipped_rows: number; empty?: boolean }> };
 };
 
-export type CreateImportBatchInput = { sourceType: ImportSourceType; fileName: string; fileSize: number; fileSha256: string; objectKey: string };
+export type CreateImportBatchInput = { sourceType: ImportSourceType; fileName: string; fileSize: number; fileSha256: string; objectKey: string; accountId?: string | null };
 export type HeaderConfirmationInput = { sheetName: string; headerRow: number; dataStartRow: number; dataEndRow?: number };
 export type MappingConfirmationInput = { mapping: Record<string, string>; parserVersion: string };
 export type ReconciliationDecisionInput = { candidateId: string; decision: "duplicate" | "parent_settlement" | "refund_reversal" | "fee_related" | "split" | "unrelated"; expectedVersion: number; reason?: string };
@@ -299,6 +302,12 @@ export interface FinanceRepository {
   voidManualTransaction(transactionId: string, reason: string): Promise<{ transaction_id: string }>;
   createImportBatch(input: CreateImportBatchInput): Promise<ImportBatch>;
   markImportBatchUploaded(batchId: string, input: UploadImportInput): Promise<ImportBatch>;
+  enqueueImportParse(batchId: string): Promise<FinanceImportJob>;
+  getImportParseJob(jobId: string): Promise<FinanceImportJob | null>;
+  pauseImportParseJob(jobId: string): Promise<FinanceImportJob>;
+  resumeImportParseJob(jobId: string): Promise<FinanceImportJob>;
+  cancelImportParseJob(jobId: string): Promise<FinanceImportJob>;
+  retryImportParseJob(jobId: string): Promise<FinanceImportJob>;
   getImportBatch(batchId: string): Promise<ImportBatch | null>;
   listImportBatches(limit?: number): Promise<ImportBatch[]>;
   listImportErrors(batchId: string, limit?: number): Promise<ImportErrorRow[]>;
@@ -325,6 +334,16 @@ type BatchRow = {
   invalid_row_count: number;
   field_mapping: Record<string, string>;
   header_preview: ImportBatch["header_preview"];
+  parse_job_id: string | null;
+  parse_job_status: FinanceImportJobStatus | null;
+  parse_job_attempts: number | null;
+  parse_job_max_attempts: number | null;
+  parse_job_next_attempt_at: string | null;
+  parse_job_error_code: string | null;
+  parse_job_error_message: string | null;
+  parse_job_created_at: string | null;
+  parse_job_started_at: string | null;
+  parse_job_completed_at: string | null;
 };
 
 type FilterRow = { id: string; filter_type: DrilldownType; filters: Record<string, string> };
@@ -355,9 +374,9 @@ function nullableText(value: string | null | undefined): string | null {
   return text ? text : null;
 }
 
-function requireRow<Row extends Record<string, unknown>>(rows: Row[], code: string, message: string): Row {
+function requireRow<Row extends Record<string, unknown>>(rows: Row[], code: string, message: string, statusCode?: number): Row {
   const row = rows[0];
-  if (!row) throw new DomainError(code, message, code === "NOT_FOUND" || code.endsWith("_NOT_FOUND") ? 404 : 409);
+  if (!row) throw new DomainError(code, message, statusCode ?? (code === "NOT_FOUND" || code.endsWith("_NOT_FOUND") ? 404 : 409));
   return row;
 }
 
@@ -518,9 +537,20 @@ function batchSelectSql() {
            (SELECT COUNT(*)::int FROM import_row ir WHERE ir.household_id = ib.household_id AND ir.import_batch_id = ib.id) AS row_count,
            (SELECT COUNT(*)::int FROM import_row ir WHERE ir.household_id = ib.household_id AND ir.import_batch_id = ib.id AND ir.status = 'invalid') AS invalid_row_count,
            ib.field_mapping,
-           ib.header_preview
+           ib.header_preview,
+           CASE WHEN fij.id IS NULL THEN NULL::text ELSE fij.id::text END AS parse_job_id,
+           fij.status AS parse_job_status,
+           fij.attempts::int AS parse_job_attempts,
+           fij.max_attempts::int AS parse_job_max_attempts,
+           fij.next_attempt_at::text AS parse_job_next_attempt_at,
+           fij.error_code AS parse_job_error_code,
+           fij.error_message AS parse_job_error_message,
+           fij.created_at::text AS parse_job_created_at,
+           fij.started_at::text AS parse_job_started_at,
+           fij.completed_at::text AS parse_job_completed_at
       FROM import_batch ib
       JOIN financial_source fs ON fs.household_id = ib.household_id AND fs.id = ib.source_id
+      LEFT JOIN finance_import_job fij ON fij.household_id = ib.household_id AND fij.import_batch_id = ib.id
      WHERE ib.household_id = $1 AND ib.id = $2
   `;
 }
@@ -539,9 +569,20 @@ function batchListSelectSql() {
            (SELECT COUNT(*)::int FROM import_row ir WHERE ir.household_id = ib.household_id AND ir.import_batch_id = ib.id) AS row_count,
            (SELECT COUNT(*)::int FROM import_row ir WHERE ir.household_id = ib.household_id AND ir.import_batch_id = ib.id AND ir.status = 'invalid') AS invalid_row_count,
            ib.field_mapping,
-           ib.header_preview
+           ib.header_preview,
+           CASE WHEN fij.id IS NULL THEN NULL::text ELSE fij.id::text END AS parse_job_id,
+           fij.status AS parse_job_status,
+           fij.attempts::int AS parse_job_attempts,
+           fij.max_attempts::int AS parse_job_max_attempts,
+           fij.next_attempt_at::text AS parse_job_next_attempt_at,
+           fij.error_code AS parse_job_error_code,
+           fij.error_message AS parse_job_error_message,
+           fij.created_at::text AS parse_job_created_at,
+           fij.started_at::text AS parse_job_started_at,
+           fij.completed_at::text AS parse_job_completed_at
       FROM import_batch ib
       JOIN financial_source fs ON fs.household_id = ib.household_id AND fs.id = ib.source_id
+      LEFT JOIN finance_import_job fij ON fij.household_id = ib.household_id AND fij.import_batch_id = ib.id
      WHERE ib.household_id = $1
      ORDER BY ib.created_at DESC
      LIMIT $2
@@ -560,8 +601,25 @@ function mapBatch(row: BatchRow): ImportBatch {
     detected_sheet: row.detected_sheet,
     raw_retention_until: row.raw_retention_until,
     counts: { rows: Number(row.row_count ?? 0), invalid: Number(row.invalid_row_count ?? 0) },
+    parse_job: row.parse_job_id ? { id: row.parse_job_id, batch_id: row.id, status: row.parse_job_status ?? "queued", attempts: Number(row.parse_job_attempts ?? 0), max_attempts: Number(row.parse_job_max_attempts ?? 3), next_attempt_at: row.parse_job_next_attempt_at, error_code: row.parse_job_error_code, error_message: row.parse_job_error_message, created_at: row.parse_job_created_at ?? "", started_at: row.parse_job_started_at, completed_at: row.parse_job_completed_at } : null,
     field_mapping: row.field_mapping ?? {},
     header_preview: row.header_preview ?? { sheets: [] },
+  };
+}
+
+function mapFinanceImportJob(row: Record<string, unknown>): FinanceImportJob {
+  return {
+    id: String(row.id),
+    batch_id: String(row.batch_id ?? row.import_batch_id),
+    status: String(row.status) as FinanceImportJobStatus,
+    attempts: Number(row.attempts ?? 0),
+    max_attempts: Number(row.max_attempts ?? 3),
+    next_attempt_at: row.next_attempt_at ? String(row.next_attempt_at) : null,
+    error_code: row.error_code ? String(row.error_code) : null,
+    error_message: row.error_message ? String(row.error_message) : null,
+    created_at: String(row.created_at),
+    started_at: row.started_at ? String(row.started_at) : null,
+    completed_at: row.completed_at ? String(row.completed_at) : null,
   };
 }
 
@@ -2068,11 +2126,13 @@ export class SqlFinanceRepository implements FinanceRepository {
     return inTenantTransaction(this.pool, this.scope, async (client) => {
       await assertFinancialPermission(client, this.scope, "import");
       const source = await client.query<{ id: string }>(
-        `INSERT INTO financial_source (id, household_id, source_type, display_name)
-         VALUES ($1, $2, $3, $4)
-         ON CONFLICT (household_id, source_type, display_name) DO UPDATE SET display_name = EXCLUDED.display_name
+        `INSERT INTO financial_source (id, household_id, source_type, display_name, account_id)
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (household_id, source_type, display_name) DO UPDATE
+           SET display_name = EXCLUDED.display_name,
+               account_id = COALESCE(EXCLUDED.account_id, financial_source.account_id)
          RETURNING id::text AS id`,
-        [randomUUID(), this.scope.householdId, input.sourceType, input.sourceType],
+        [randomUUID(), this.scope.householdId, input.sourceType, input.sourceType, input.accountId ?? null],
       );
       const sourceRow = requireRow(source.rows, "SOURCE_CREATE_FAILED", "无法创建账单来源");
       const batchId = randomUUID();
@@ -2108,6 +2168,152 @@ export class SqlFinanceRepository implements FinanceRepository {
         [this.scope.householdId, batchId],
       );
       return this.getBatchInTransaction(client, batchId);
+    });
+  }
+
+  async enqueueImportParse(batchId: string): Promise<FinanceImportJob> {
+    return await inTenantTransaction(this.pool, this.scope, async (client) => {
+      await assertFinancialPermission(client, this.scope, "import");
+      const current = await client.query<{ status: ImportStatus }>(
+        `SELECT status FROM import_batch WHERE household_id = $1 AND id = $2 FOR UPDATE`,
+        [this.scope.householdId, batchId],
+      );
+      const currentRow = requireRow(current.rows, "NOT_FOUND", "导入批次不存在");
+      const terminal = ["header_detected", "mapping_pending", "normalized", "matching", "reconciliation_pending", "confirmed", "committed"];
+      if (!["created", "uploaded", "scanning"].includes(currentRow.status) && !terminal.includes(currentRow.status)) {
+        throw new DomainError("IMPORT_STATE_CONFLICT", "当前批次不能开始解析", 409);
+      }
+      if (["created", "uploaded", "scanning"].includes(currentRow.status)) {
+        await client.query(
+          `UPDATE import_batch SET status = 'scanning', version = version + 1, updated_at = now() WHERE household_id = $1 AND id = $2`,
+          [this.scope.householdId, batchId],
+        );
+      }
+      const id = randomUUID();
+      const result = await client.query<Record<string, unknown>>(
+        `INSERT INTO finance_import_job (id, household_id, import_batch_id, requested_by)
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT (household_id, import_batch_id) DO UPDATE
+           SET status = CASE WHEN finance_import_job.status IN ('failed', 'cancelled') THEN 'queued' ELSE finance_import_job.status END,
+               next_attempt_at = CASE WHEN finance_import_job.status IN ('failed', 'cancelled') THEN now() ELSE finance_import_job.next_attempt_at END,
+               error_code = CASE WHEN finance_import_job.status IN ('failed', 'cancelled') THEN NULL ELSE finance_import_job.error_code END,
+               error_message = CASE WHEN finance_import_job.status IN ('failed', 'cancelled') THEN NULL ELSE finance_import_job.error_message END,
+               lease_expires_at = NULL,
+               updated_at = now()
+         RETURNING id::text AS id, import_batch_id::text AS batch_id, status, attempts::int AS attempts,
+                   max_attempts::int AS max_attempts, next_attempt_at::text AS next_attempt_at,
+                   error_code, error_message, created_at::text AS created_at,
+                   started_at::text AS started_at, completed_at::text AS completed_at`,
+        [id, this.scope.householdId, batchId, this.scope.userId],
+      );
+      const job = mapFinanceImportJob(requireRow(result.rows, "IMPORT_QUEUE_FAILED", "无法创建解析任务"));
+      await writeFinanceAudit(client, this.scope, "finance_import_parse_queued", "finance_import_job", job.id, null, { batch_id: batchId, status: job.status, attempts: job.attempts });
+      return job;
+    });
+  }
+
+  async getImportParseJob(jobId: string): Promise<FinanceImportJob | null> {
+    return inTenantTransaction(this.pool, this.scope, async (client) => {
+      await assertFinancialPermission(client, this.scope, "view");
+      const result = await client.query<Record<string, unknown>>(
+        `SELECT id::text AS id, import_batch_id::text AS batch_id, status, attempts::int AS attempts,
+                max_attempts::int AS max_attempts, next_attempt_at::text AS next_attempt_at,
+                error_code, error_message, created_at::text AS created_at,
+                started_at::text AS started_at, completed_at::text AS completed_at
+           FROM finance_import_job
+          WHERE household_id = $1 AND id = $2`,
+        [this.scope.householdId, jobId],
+      );
+      return result.rows[0] ? mapFinanceImportJob(result.rows[0]) : null;
+    });
+  }
+
+  async pauseImportParseJob(jobId: string): Promise<FinanceImportJob> {
+    return inTenantTransaction(this.pool, this.scope, async (client) => {
+      await assertFinancialPermission(client, this.scope, "import");
+      const result = await client.query<Record<string, unknown>>(
+        `UPDATE finance_import_job
+            SET status = 'paused', lease_expires_at = NULL, updated_at = now()
+          WHERE household_id = $1 AND id = $2 AND status IN ('queued', 'running')
+          RETURNING id::text AS id, import_batch_id::text AS batch_id, status, attempts::int AS attempts,
+                    max_attempts::int AS max_attempts, next_attempt_at::text AS next_attempt_at,
+                    error_code, error_message, created_at::text AS created_at,
+                    started_at::text AS started_at, completed_at::text AS completed_at`,
+        [this.scope.householdId, jobId],
+      );
+      const job = mapFinanceImportJob(requireRow(result.rows, "IMPORT_STATE_CONFLICT", "解析任务不能暂停", 409));
+      await writeFinanceAudit(client, this.scope, "finance_import_parse_paused", "finance_import_job", job.id, { status: "queued or running" }, { status: job.status });
+      return job;
+    });
+  }
+
+  async resumeImportParseJob(jobId: string): Promise<FinanceImportJob> {
+    return inTenantTransaction(this.pool, this.scope, async (client) => {
+      await assertFinancialPermission(client, this.scope, "import");
+      const result = await client.query<Record<string, unknown>>(
+        `UPDATE finance_import_job
+            SET status = 'queued', next_attempt_at = now(), lease_expires_at = NULL, error_code = NULL, error_message = NULL, updated_at = now()
+          WHERE household_id = $1 AND id = $2 AND status = 'paused'
+          RETURNING id::text AS id, import_batch_id::text AS batch_id, status, attempts::int AS attempts,
+                    max_attempts::int AS max_attempts, next_attempt_at::text AS next_attempt_at,
+                    error_code, error_message, created_at::text AS created_at,
+                    started_at::text AS started_at, completed_at::text AS completed_at`,
+        [this.scope.householdId, jobId],
+      );
+      const job = mapFinanceImportJob(requireRow(result.rows, "IMPORT_STATE_CONFLICT", "解析任务不能恢复", 409));
+      await client.query(
+        `UPDATE import_batch SET status = 'scanning', version = version + 1, updated_at = now() WHERE household_id = $1 AND id = $2 AND status IN ('created', 'uploaded', 'scanning', 'failed', 'cancelled')`,
+        [this.scope.householdId, job.batch_id],
+      );
+      await writeFinanceAudit(client, this.scope, "finance_import_parse_resumed", "finance_import_job", job.id, { status: "paused" }, { status: job.status });
+      return job;
+    });
+  }
+
+  async cancelImportParseJob(jobId: string): Promise<FinanceImportJob> {
+    return inTenantTransaction(this.pool, this.scope, async (client) => {
+      await assertFinancialPermission(client, this.scope, "import");
+      const result = await client.query<Record<string, unknown>>(
+        `UPDATE finance_import_job
+            SET status = 'cancelled', lease_expires_at = NULL, completed_at = now(), updated_at = now()
+          WHERE household_id = $1 AND id = $2 AND status IN ('queued', 'running', 'paused')
+          RETURNING id::text AS id, import_batch_id::text AS batch_id, status, attempts::int AS attempts,
+                    max_attempts::int AS max_attempts, next_attempt_at::text AS next_attempt_at,
+                    error_code, error_message, created_at::text AS created_at,
+                    started_at::text AS started_at, completed_at::text AS completed_at`,
+        [this.scope.householdId, jobId],
+      );
+      const job = mapFinanceImportJob(requireRow(result.rows, "IMPORT_STATE_CONFLICT", "解析任务不能撤销", 409));
+      await client.query(
+        `UPDATE import_batch SET status = 'cancelled', version = version + 1, updated_at = now() WHERE household_id = $1 AND id = $2 AND status IN ('created', 'uploaded', 'scanning')`,
+        [this.scope.householdId, job.batch_id],
+      );
+      await writeFinanceAudit(client, this.scope, "finance_import_parse_cancelled", "finance_import_job", job.id, { status: "queued or running" }, { status: job.status });
+      return job;
+    });
+  }
+
+  async retryImportParseJob(jobId: string): Promise<FinanceImportJob> {
+    return inTenantTransaction(this.pool, this.scope, async (client) => {
+      await assertFinancialPermission(client, this.scope, "import");
+      const result = await client.query<Record<string, unknown>>(
+        `UPDATE finance_import_job
+            SET status = 'queued', attempts = 0, next_attempt_at = now(), lease_expires_at = NULL,
+                error_code = NULL, error_message = NULL, completed_at = NULL, updated_at = now()
+          WHERE household_id = $1 AND id = $2 AND status IN ('failed', 'cancelled')
+          RETURNING id::text AS id, import_batch_id::text AS batch_id, status, attempts::int AS attempts,
+                    max_attempts::int AS max_attempts, next_attempt_at::text AS next_attempt_at,
+                    error_code, error_message, created_at::text AS created_at,
+                    started_at::text AS started_at, completed_at::text AS completed_at`,
+        [this.scope.householdId, jobId],
+      );
+      const job = mapFinanceImportJob(requireRow(result.rows, "IMPORT_STATE_CONFLICT", "解析任务不能重试", 409));
+      await client.query(
+        `UPDATE import_batch SET status = 'scanning', version = version + 1, updated_at = now() WHERE household_id = $1 AND id = $2 AND status IN ('failed', 'cancelled', 'created', 'uploaded')`,
+        [this.scope.householdId, job.batch_id],
+      );
+      await writeFinanceAudit(client, this.scope, "finance_import_parse_retried", "finance_import_job", job.id, { status: "failed or cancelled" }, { status: job.status });
+      return job;
     });
   }
 

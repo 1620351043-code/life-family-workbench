@@ -1575,17 +1575,111 @@ paths:
       operationId: parseImportBatch
       summary: 启动隔离账单解析 worker 并写入导入行与来源记录
       description: |
-        当前开发阶段使用本地解析 worker 读取已上传对象；生产环境仍需注入
-        对象存储适配器。解析结果只写入 import_row/source_record，不直接写入正式账本。
+        API 只创建解析任务并立即返回 202；worker 按家庭隔离读取已上传对象，
+        解析结果只写入 import_row/source_record，不直接写入正式账本。客户端应轮询任务或批次状态。
       parameters:
         - $ref: '#/components/parameters/BatchId'
       responses:
-        '200':
-          description: 解析完成并等待表头确认
+        '202':
+          description: 解析任务已排队，客户端应轮询任务或批次状态
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ImportBatch'
+                type: object
+                required: [batch, job]
+                properties:
+                  batch:
+                    $ref: '#/components/schemas/ImportBatch'
+                  job:
+                    $ref: '#/components/schemas/FinanceImportJob'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/finance/import-jobs/{jobId}:
+    get:
+      tags: [Finance Import]
+      operationId: getFinanceImportJob
+      summary: 获取账单解析任务状态
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+      responses:
+        '200':
+          description: 解析任务状态
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FinanceImportJob'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/finance/import-jobs/{jobId}/pause:
+    post:
+      tags: [Finance Import]
+      operationId: pauseFinanceImportJob
+      summary: 暂停账单解析任务
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+      responses:
+        '200':
+          description: 已暂停的解析任务
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FinanceImportJob'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/finance/import-jobs/{jobId}/resume:
+    post:
+      tags: [Finance Import]
+      operationId: resumeFinanceImportJob
+      summary: 恢复已暂停的账单解析任务
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+      responses:
+        '200':
+          description: 已恢复排队的解析任务
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FinanceImportJob'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/finance/import-jobs/{jobId}/cancel:
+    post:
+      tags: [Finance Import]
+      operationId: cancelFinanceImportJob
+      summary: 取消账单解析任务
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+      responses:
+        '200':
+          description: 已取消的解析任务
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FinanceImportJob'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/finance/import-jobs/{jobId}/retry:
+    post:
+      tags: [Finance Import]
+      operationId: retryFinanceImportJob
+      summary: 重试失败或已取消的账单解析任务
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+      responses:
+        '200':
+          description: 已重新排队的解析任务
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FinanceImportJob'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
@@ -1813,6 +1907,13 @@ components:
         format: uuid
     BatchId:
       name: batchId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    JobId:
+      name: jobId
       in: path
       required: true
       schema:
@@ -3329,6 +3430,11 @@ components:
           type: string
         object_key:
           type: string
+        account_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: 该账单来源的入账账户；未设置时导入流水保持待入账
     ImportBatch:
       type: object
       required: [id, file_name, file_size, source_type, status, version, raw_retention_until]
@@ -3359,6 +3465,10 @@ components:
           type: object
           additionalProperties:
             type: integer
+        parse_job:
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/FinanceImportJob'
         header_preview:
           $ref: '#/components/schemas/ImportHeaderPreview'
     ImportHeaderPreview:
@@ -3403,6 +3513,46 @@ components:
                     role:
                       type: string
                       enum: [blank, metadata, header, data]
+    FinanceImportJob:
+      type: object
+      required: [id, batch_id, status, attempts, max_attempts, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        batch_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [queued, running, paused, succeeded, failed, cancelled]
+        attempts:
+          type: integer
+          minimum: 0
+        max_attempts:
+          type: integer
+          minimum: 1
+        next_attempt_at:
+          type: string
+          format: date-time
+          nullable: true
+        error_code:
+          type: string
+          nullable: true
+        error_message:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
     HeaderConfirmation:
       type: object
       required: [sheet_name, header_row, data_start_row]
