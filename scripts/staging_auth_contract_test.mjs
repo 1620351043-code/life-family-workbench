@@ -35,7 +35,13 @@ assert.deepEqual(assertSessionCookie([{ name: "life_session", domain: "staging.l
 assert.equal(assertHttpsHeaders({
   url: "https://staging.life.example.test/",
   status: 200,
-  headers: new Headers({ "strict-transport-security": "max-age=31536000; includeSubDomains" }),
+  headers: new Headers({
+    "strict-transport-security": "max-age=31536000; includeSubDomains",
+    "x-frame-options": "DENY",
+    "x-content-type-options": "nosniff",
+    "referrer-policy": "strict-origin-when-cross-origin",
+    "content-security-policy": "default-src 'self'; frame-ancestors 'none'; object-src 'none'",
+  }),
 }).hsts.includes("31536000"), true);
 assert.equal(assertHttpRedirect(new Response(null, { status: 308, headers: { location: "https://staging.life.example.test/" } }), config.baseUrl).status, 308);
 
@@ -51,5 +57,8 @@ assert.throws(() => parseMailboxPayload({ reset_url: `https://evil.example.test/
 const caddyTemplate = await readFile(new URL("../deploy/life-staging.Caddyfile.example", import.meta.url), "utf8");
 assert.match(caddyTemplate, /handle \/api\/\*/);
 assert.match(caddyTemplate, /handle \/healthz/);
+assert.match(caddyTemplate, /X-Frame-Options/);
+assert.match(caddyTemplate, /frame-ancestors 'none'/);
+assert.match(caddyTemplate, /object-src 'none'/);
 
 console.log(JSON.stringify({ ok: true, checks: 10, contract: "B-011 staging auth black-box" }));

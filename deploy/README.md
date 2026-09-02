@@ -42,6 +42,11 @@ npm run finance:retention-worker
 当前导入解析、导出和保留期 worker 是一次性批处理入口，应由 systemd timer 或等价调度周期性触发，并为导入、导出、保留期清理配置失败告警。API 对外只经 HTTPS 反向代理，不能直接暴露 3100 端口。
 
 ## 4. 发布验收
+## 3.1 安全响应头与 CSRF
+
+API 服务在 `onSend` 中统一设置 `X-Content-Type-Options`、`X-Frame-Options`、`Referrer-Policy`、`Permissions-Policy` 和 `Content-Security-Policy`，staging/production 另加 HSTS；`deploy/life-staging.Caddyfile.example` 保持相同头规则，部署时必须使用该模板且不删除其中的安全头。
+
+所有 `/api/*` 的 POST/PUT/PATCH/DELETE 请求都会校验 `Origin` 或 `Referer`：请求主机或 `LIFE_PUBLIC_APP_URL` 与来源同域才放行；无 Origin/Referer 的非浏览器客户端仍可正常调用，跨域请求返回 403 `CSRF_ORIGIN_DENIED`。受支持的来源必须与外部域名保持一致，不能把 API 直接暴露在未经 Caddy HTTPS 保护的端口。
 
 必须实际完成：注册 → 登录 → `/api/me` → 申请密码重置 → 邮件链接 → 更新密码 → 旧会话失效 → 新密码登录 → 财务首页 → 新增记账 → 导入账单 → 表头预览 → 关联审核 → 导出下载 → 退出；再验证跨家庭 Cookie、儿童权限、COS 对象路径、备份恢复和回滚。
 
