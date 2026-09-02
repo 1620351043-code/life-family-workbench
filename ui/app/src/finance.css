@@ -439,6 +439,7 @@
 .file-drop span { display: grid; place-items: center; width: 42px; height: 42px; border-radius: 15px; background: rgba(255,255,255,.72); color: var(--life-accent); font-size: 24px; }
 .file-drop strong { max-width: 100%; color: var(--life-text-primary); font-size: var(--life-text-supporting); overflow-wrap: anywhere; }
 .file-drop small, .import-honesty { color: var(--life-text-tertiary); font-size: 10px; line-height: 1.45; text-align: center; }
+.import-error-note { margin: -2px 0 0; padding: 8px 10px; border-radius: 12px; background: rgba(255,240,244,.72); color: var(--life-danger); font-size: var(--life-text-compact); text-align: center; }
 .import-file-meta, .review-summary { display: flex; justify-content: space-between; gap: 8px; padding: 9px 10px; border-radius: 12px; background: rgba(255,255,255,.58); color: var(--life-text-secondary); font-size: var(--life-text-compact); }
 .import-file-meta span:last-child { color: var(--life-success); }
 .import-status-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 9px; padding: 12px; border: 1px solid var(--life-line); border-radius: 16px; background: rgba(255,255,255,.62); }

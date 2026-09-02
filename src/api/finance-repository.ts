@@ -44,6 +44,7 @@ export type ImportBatch = {
   id: string;
   file_name: string;
   file_size: number;
+  file_sha256: string;
   source_type: ImportSourceType;
   status: ImportStatus;
   version: number;
@@ -324,6 +325,7 @@ type BatchRow = {
   id: string;
   file_name: string;
   file_size: number;
+  file_sha256: string;
   source_type: ImportSourceType;
   status: ImportStatus;
   version: number;
@@ -528,6 +530,7 @@ function batchSelectSql() {
     SELECT ib.id::text AS id,
            ib.file_name,
            COALESCE(ib.file_size, 0)::int AS file_size,
+           ib.file_sha256,
            fs.source_type,
            ib.status,
            ib.version,
@@ -560,6 +563,7 @@ function batchListSelectSql() {
     SELECT ib.id::text AS id,
            ib.file_name,
            COALESCE(ib.file_size, 0)::int AS file_size,
+           ib.file_sha256,
            fs.source_type,
            ib.status,
            ib.version,
@@ -594,6 +598,7 @@ function mapBatch(row: BatchRow): ImportBatch {
     id: row.id,
     file_name: row.file_name,
     file_size: Number(row.file_size ?? 0),
+    file_sha256: row.file_sha256,
     source_type: row.source_type,
     status: row.status,
     version: Number(row.version),

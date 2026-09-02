@@ -19,6 +19,7 @@
     "staging:auth-e2e": "node scripts/staging_auth_e2e.mjs",
     "finance:export-worker": "tsx scripts/finance_export_worker.ts",
     "finance:import-worker": "tsx scripts/finance_import_worker.ts",
+    "finance:security-test": "python3 workers/finance_import_security_test.py",
     "finance:retention-worker": "tsx scripts/finance_retention_worker.ts",
     "web:dev": "vite --config ui/app/vite.config.ts",
     "web:build": "vite build --config ui/app/vite.config.ts",

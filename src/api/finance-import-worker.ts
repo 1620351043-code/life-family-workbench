@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { inTenantTransaction, type DbPool, type FinanceScope } from "./database.js";
 import type { FinanceImportParser, ParsedImportResult } from "./finance-import-parser.js";
+import { ImportSecurityError } from "./finance-import-security.js";
 import { SqlFinanceRepository } from "./finance-repository.js";
 import type { ImportObjectStore } from "./import-storage.js";
 
@@ -87,19 +88,20 @@ async function markImportJobSucceeded(pool: DbPool, scope: FinanceScope, jobId: 
 
 async function markImportJobFailure(pool: DbPool, scope: FinanceScope, job: QueuedImportJob, error: unknown): Promise<"retry" | "failed" | "skipped"> {
   const message = error instanceof Error ? error.message.slice(0, 500) : "账单解析失败";
+  const rejection = error instanceof ImportSecurityError;
   return inTenantTransaction(pool, scope, async (client) => {
     const result = await client.query<{ status: string; attempts: number }>(
       `UPDATE finance_import_job
-          SET status = CASE WHEN attempts >= max_attempts THEN 'failed' ELSE 'queued' END,
-              next_attempt_at = CASE WHEN attempts < max_attempts THEN now() + (LEAST(attempts, 6) * interval '1 minute') ELSE NULL END,
+          SET status = CASE WHEN $4 THEN 'failed' WHEN attempts >= max_attempts THEN 'failed' ELSE 'queued' END,
+              next_attempt_at = CASE WHEN $4 THEN NULL WHEN attempts < max_attempts THEN now() + (LEAST(attempts, 6) * interval '1 minute') ELSE NULL END,
               lease_expires_at = NULL,
-              error_code = CASE WHEN attempts >= max_attempts THEN 'IMPORT_PARSE_WORKER_FAILED' ELSE 'IMPORT_PARSE_WORKER_RETRY' END,
+              error_code = CASE WHEN $4 THEN 'IMPORT_FILE_REJECTED' WHEN attempts >= max_attempts THEN 'IMPORT_PARSE_WORKER_FAILED' ELSE 'IMPORT_PARSE_WORKER_RETRY' END,
               error_message = $3,
-              completed_at = CASE WHEN attempts >= max_attempts THEN now() ELSE NULL END,
+              completed_at = CASE WHEN $4 OR attempts >= max_attempts THEN now() ELSE NULL END,
               updated_at = now()
         WHERE household_id = $1 AND id = $2 AND status = 'running'
         RETURNING status, attempts::int AS attempts`,
-      [scope.householdId, job.id, message],
+      [scope.householdId, job.id, message, rejection],
     );
     const row = result.rows[0];
     if (!row) return "skipped";

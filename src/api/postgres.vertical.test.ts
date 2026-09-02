@@ -515,16 +515,16 @@ describe("PostgreSQL finance vertical slice", () => {
   });
 
   it("runs import state transitions, reconciliation decision, commit and revoke in PostgreSQL", async () => {
-    const rawFile = Buffer.from("wechat-export-fixture");
+    const rawFile = Buffer.from("交易时间,金额,收支,交易对方,流水号\n2026-08-04 12:00:00,50.00,支出,家庭餐饮,WX-1\n", "utf8");
     const created = await app.inject({
       method: "POST",
       url: "/api/finance/import-batches",
-      payload: { source_type: "wechat", file_name: "wechat.xlsx", file_size: rawFile.length, file_sha256: createHash("sha256").update(rawFile).digest("hex"), object_key: "households/a/imports/1/original" },
+      payload: { source_type: "wechat", file_name: "wechat.csv", file_size: rawFile.length, file_sha256: createHash("sha256").update(rawFile).digest("hex"), object_key: "households/a/imports/1/original" },
     });
     expect(created.statusCode).toBe(201);
     const batchId = created.json().id as string;
     expect(created.json().status).toBe("created");
-    expect(created.json().file_name).toBe("wechat.xlsx");
+    expect(created.json().file_name).toBe("wechat.csv");
 
     const mismatch = await app.inject({ method: "POST", url: `/api/finance/import-batches/${batchId}/upload`, headers: { "content-type": "application/octet-stream" }, payload: Buffer.from("wrong-file") });
     expect(mismatch.statusCode).toBe(409);
@@ -594,12 +594,12 @@ describe("PostgreSQL finance vertical slice", () => {
     await db.query("INSERT INTO source_record (id, household_id, source_id, import_batch_id, external_id, source_fingerprint, occurred_at, direction, amount, currency, merchant, channel) VALUES ($1, $2, $3, $4, $5, $6, $7, 'expense', $8, 'CNY', $9, $10)", [oldBankRecord, householdA, "30000000-0000-0000-0000-0000000000a1", oldBankBatch, "bank-old-1", "old-bank-fingerprint", "2026-08-04T12:00:02Z", "50.00", "家庭餐饮", "bank"]);
     await db.query("SET ROLE life_app");
 
-    const rawFile = Buffer.from("parser-worker-fixture");
+    const rawFile = Buffer.from("交易时间,金额,收支,交易对方,流水号\n2026-08-04 12:00:00,50.00,支出,家庭餐饮,WX-2\n", "utf8");
     const parsed: ParsedImportResult = {
       schema_version: "life.finance.import.v1",
       parser_version: "real-bill-parser-v1",
       source_type: "wechat",
-      file_name: "wechat.xlsx",
+      file_name: "wechat.csv",
       detected_sheet: "Sheet1",
       detected_header_row: 18,
       sheets: [{ sheet_name: "Sheet1", header_row: 18, data_start_row: 19, header_score: 8, field_mapping: { occurred_at: "交易时间", amount: "金额(元)", direction: "收/支" }, preview_rows: [], skipped_rows: 0, records: [] }],
@@ -615,7 +615,7 @@ describe("PostgreSQL finance vertical slice", () => {
       importParser,
       importRunner: (scope, _batchId, jobId) => runFinanceImportJob(pool, importParser, importStore, scope, jobId),
     });
-    const created = await app.inject({ method: "POST", url: "/api/finance/import-batches", payload: { source_type: "wechat", file_name: "wechat.xlsx", file_size: rawFile.length, file_sha256: createHash("sha256").update(rawFile).digest("hex"), object_key: "client-key-is-ignored" } });
+    const created = await app.inject({ method: "POST", url: "/api/finance/import-batches", payload: { source_type: "wechat", file_name: "wechat.csv", file_size: rawFile.length, file_sha256: createHash("sha256").update(rawFile).digest("hex"), object_key: "client-key-is-ignored" } });
     const batchId = created.json().id as string;
     await app.inject({ method: "POST", url: `/api/finance/import-batches/${batchId}/upload`, headers: { "content-type": "application/octet-stream" }, payload: rawFile });
     const parsedBatch = await app.inject({ method: "POST", url: `/api/finance/import-batches/${batchId}/parse` });

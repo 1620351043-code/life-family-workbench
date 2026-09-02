@@ -312,7 +312,7 @@ npm run production:preflight
 | E-112 | 365 天清理 worker | `DONE` | 对象删除、最小摘要保留、审计和失败重试代码测试通过 |
 | E-113 | PDF/ZIP/OCR 导入 | `NOT_STARTED` | PDF 页、ZIP 结构、OCR 置信度和安全解压通过 |
 | E-114 | 解析任务异步队列化 | `DONE` | `finance_import_job` 迁移、独立 worker、HTTP 202 异步排队、暂停/恢复/取消/重试、批次携带任务状态、移动端轮询同步；修复异步解析后字段映射未回填与本地并发 500。迁移烟测 241 statements/31 tables/32 policies，OpenAPI 66 paths/89 schemas，22 项 API 测试、正式身份财务移动端 E2E 和三档视觉回归通过；目标原生 PostgreSQL/HTTPS 仍归 E-118/B-011 闸门 |
-| E-115 | 大文件和恶意文件防护 | `PARTIAL` | 50MB body limit 已有；类型、压缩炸弹、宏、路径等待补 |
+| E-115 | 大文件和恶意文件防护 | `DONE` | 扩展名仅 CSV/XLS/XLSX；文件名长度、路径分隔符与控制字符校验；最小非空、最大 50MB；CSV 拒绝 ZIP/OLE 伪装与 NUL；XLS 校验 OLE magic；XLSX 安全扫描拒绝宏、外部链接、加密、路径穿越、绝对路径、符号链接、ZIP 炸弹与条目上限；解析临时文件使用随机 UUID + 安全扩展名 + 0600；Python worker 60 秒超时；恶意文件直接失败不重试，错误码 `IMPORT_FILE_REJECTED`；12 项安全/API/Python 测试与真实四类账单全部通过。PDF/ZIP/OCR 仍归 E-113 |
 | E-116 | 正式身份财务移动端 E2E | `DONE` | `npm run web:finance-e2e`：真实登录 → 首页/总资产/预算环/收支趋势/资产趋势下钻 → 手动支出/收入/转账 → 编辑与撤销 → 银行/微信/支付宝/记账 App 四类真实 CSV 上传（表头行号预览、字段映射、跨来源重复候选确认）→ 统一账本提交 → 导出 CSV 并过期 409 → 移动端撤销导入批次 → 账本流水减少；430×932 布局审计无溢出、无 <44pt 控件；证据 `output/playwright/finance-e2e/` |
 | E-117 | 财务完整视觉回归 | `DONE` | 真实验收账号会话下 23 个财务状态在 430/390/320 三档截图完成，共 69 张；每页可见、非空、无根级横向溢出、可见控件 ≥44×44pt；证据见 E-015；真实文件上传后的解析流程已由 E-116 闭环 |
 | E-118 | 原生 PostgreSQL 验证 | `BLOCKED` | 目标实例迁移、RLS、连接池、索引和并发测试通过 |
@@ -350,7 +350,7 @@ npm run production:preflight
 | G-006 | CSRF 防护 | `NOT_STARTED` | SameSite 之外补充 token 或严格 Origin/Referer 校验 |
 | G-007 | 安全响应头 | `NOT_STARTED` | CSP、HSTS、X-Frame-Options、Referrer-Policy 等 |
 | G-008 | XSS 和富文本边界 | `PARTIAL` | React 默认转义；附件、AI 和未来富文本需专项测试 |
-| G-009 | 文件上传安全 | `PARTIAL` | 大小限制已有；类型、内容、ZIP、宏、OCR 临时文件待补 |
+| G-009 | 文件上传安全 | `DONE` | CSV/XLS/XLSX 首发范围闭环：扩展名/名称/大小/内容 magic、ZIP 结构和宏/外部链接/加密/路径/解压体积/临时文件/worker 超时均已覆盖；PDF/ZIP/OCR 导入仍归 E-113 |
 | G-010 | 重复提交和幂等 | `PARTIAL` | 财务关键写入已有；家庭、AI 和其它模块待全量检查 |
 | G-011 | 前端请求超时和取消 | `PARTIAL` | 请求版本保护已有；通用超时、AbortController 待补 |
 | G-012 | 网络断开和恢复 | `NOT_STARTED` | 核心页面明确离线状态，不做危险的静默写入重试 |
@@ -442,7 +442,8 @@ npm run production:preflight
 - [ ] `E-118` 原生 PostgreSQL
 - [ ] `E-119` COS live smoke
 - [ ] `E-120` 备份恢复和回滚
-- [ ] 关闭 `G-004`、`G-006`、`G-007`、`G-009`、`G-013`、`G-014`
+- [x] `G-009` 文件上传安全（CSV/XLS/XLSX 首发范围；PDF/ZIP/OCR 归 E-113）
+- [ ] 关闭 `G-004`、`G-006`、`G-007`、`G-013`、`G-014`
 
 阶段出口：财务可以在腾讯云 staging 使用真实身份、真实数据库和真实对象存储闭环运行。
 
@@ -648,3 +649,4 @@ npm run production:preflight
 | v0.19 | 2026-09-02 | 新增 `web:finance-visual-regression`，在真实登录会话下完成 23 个财务状态 × 430/390/320 = 69 张截图和布局断言；修复 `finance-import-history` 关闭按钮命中区不足 44pt；更新 README、审计证据与变更日志 | E-015、E-117 `DONE`；真实文件上传后完整导入流程仍由 E-116 接管 |
 | v0.20 | 2026-09-02 | 完成 E-116 正式身份财务移动端 E2E：真实登录、首页/预算环/趋势下钻、手动记账编辑与撤销、银行/微信/支付宝/记账 App 四类 CSV 上传、表头预览、字段映射、跨来源重复候选确认、统一账本提交、导出与过期 409、移动端撤销批次；修复导入撤销后的重复返回按钮；构建、类型检查、OpenAPI（61 paths/88 schemas）、22 项 API 测试、财务完整视觉回归与 E2E 全部通过 | E-116 `DONE`；E-015/E-117 证据补充；审计证据限制更新为本地 PGlite + 真实 Cookie，目标原生 PostgreSQL/真机/HTTPS 待部署闸门 |
 | v0.21 | 2026-09-02 | 完成 E-114 解析任务异步队列化：新增 `finance_import_job` 迁移与独立 worker，HTTP 仅创建任务并返回 202，提供暂停/恢复/取消/重试和批次任务状态，移动端轮询同步；修复异步完成后字段映射未回填及本地并发 500。迁移烟测 241 statements/31 tables/32 policies，OpenAPI 66 paths/89 schemas，22 项 API 测试、正式身份财务移动端 E2E 与三档完整视觉回归全部通过；远端 quality-gate 通过，PR #9 已合并到 main | E-114 `DONE`；证据仍为本地 PGlite + 真实 Cookie，目标原生 PostgreSQL/HTTPS 由 E-118/B-011 闸门接管
+| v0.22 | 2026-09-02 | 完成 E-115 大文件和恶意文件防护并补齐真实账单异步回放：新增服务端文件类型/名称/大小/内容校验、XLSX ZIP 安全扫描、临时文件加固和 Python worker 超时；恶意文件直接失败不重试；6 项安全测试、安全路由测试、6 项 Python worker 安全测试、29/29 API 测试、迁移/OpenAPI/构建/财务 E2E/三档视觉回归全部通过；修复真实账单脚本 SQL 行注释切分，四类真实账单（银行 547、微信 367、支付宝 420、记账 App 5 行）全部异步解析、关联并提交 1,331 笔 | E-115、G-009 更新为 `DONE`（PDF/ZIP/OCR 仍归 E-113）；`npm run finance:security-test` 可复跑

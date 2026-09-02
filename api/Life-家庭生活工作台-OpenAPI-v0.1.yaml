@@ -1516,6 +1516,10 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
   /api/finance/import-batches/{batchId}:
     get:
       tags: [Finance Import]
@@ -1944,6 +1948,18 @@ components:
   responses:
     BadRequest:
       description: 请求参数或批次状态不合法
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    PayloadTooLarge:
+      description: 上传文件超过 50MB 限制
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    UnsupportedMediaType:
+      description: 文件扩展名或真实内容不受支持
       content:
         application/json:
           schema:
@@ -3424,10 +3440,18 @@ components:
           enum: [bank, alipay, wechat, bookkeeping_app, other]
         file_name:
           type: string
+          minLength: 1
+          maxLength: 255
+          pattern: '^[^/\\\x00-\x1f]{1,255}\.(csv|xls|xlsx)$'
+          description: 原始账单文件名；首发版本仅允许 CSV、XLS、XLSX，禁止路径和控制字符
         file_size:
           type: integer
+          minimum: 1
+          maximum: 52428800
+          description: 文件大小，单位字节，最大 50MB
         file_sha256:
           type: string
+          pattern: '^[a-f0-9]{64}$'
         object_key:
           type: string
         account_id:
@@ -3444,9 +3468,13 @@ components:
           format: uuid
         file_name:
           type: string
+        file_sha256:
+          type: string
+          description: 服务端登记并校验的原始文件 SHA-256
         file_size:
           type: integer
-          minimum: 0
+          minimum: 1
+          maximum: 52428800
         source_type:
           type: string
         status:
