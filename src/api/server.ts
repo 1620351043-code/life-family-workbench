@@ -15,12 +15,13 @@ import { InMemoryAuthAttemptLimiter, type AuthAttemptLimiter, type AuthRateLimit
 import { createPasswordResetDeliveryFromEnv, type PasswordResetDelivery } from "./password-reset-delivery.js";
 import { sensitiveCapabilities } from "./sensitive-permissions.js";
 import { isProductionDeployment, isSecureDeployment } from "./deployment-environment.js";
+import { ImportSecurityError, MAX_IMPORT_FILE_BYTES, assertImportFileName, assertImportFileSize, validateImportFile } from "./finance-import-security.js";
 
 const sourceTypes = ["bank", "alipay", "wechat", "bookkeeping_app", "other"] as const;
 const overviewQuerySchema = z.object({ start: z.string().date(), end: z.string().date(), granularity: z.enum(["day", "week", "month", "quarter"]).default("day") });
 const pageQuerySchema = z.object({ page: z.coerce.number().int().min(1).default(1), page_size: z.coerce.number().int().min(1).max(100).default(50) });
 const transactionListQuerySchema = pageQuerySchema.extend({ start: z.string().date().optional(), end: z.string().date().optional(), direction: z.enum(["income", "expense", "transfer"]).optional(), account_id: z.string().uuid().optional(), import_batch_id: z.string().uuid().optional() });
-const createImportBatchSchema = z.object({ source_type: z.enum(sourceTypes), file_name: z.string().min(1).max(255), file_size: z.number().int().nonnegative(), file_sha256: z.string().regex(/^[a-f0-9]{64}$/i), object_key: z.string().min(1), account_id: z.string().uuid().nullable().optional() });
+const createImportBatchSchema = z.object({ source_type: z.enum(sourceTypes), file_name: z.string().trim().min(1).max(255), file_size: z.number().int().min(1, "账单文件不能为空").max(MAX_IMPORT_FILE_BYTES, "账单文件不能超过 50MB"), file_sha256: z.string().regex(/^[a-f0-9]{64}$/i), object_key: z.string().min(1), account_id: z.string().uuid().nullable().optional() });
 const accountTypeSchema = z.enum(["bank", "cash", "wallet", "payment_platform", "other"]);
 const createAccountSchema = z.object({ name: z.string().trim().min(1).max(80), account_type: accountTypeSchema, currency: z.string().length(3).default("CNY"), opening_balance: z.string().regex(/^\d+(?:\.\d{1,4})?$/).default("0") });
 const updateAccountSchema = z.object({ name: z.string().trim().min(1).max(80), account_type: accountTypeSchema });
@@ -173,6 +174,7 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
   });
 
   app.setErrorHandler((error, request, reply) => {
+    if (error instanceof ImportSecurityError) return reply.code(error.statusCode).send({ code: error.code, message: error.message, trace_id: request.id });
     if (error instanceof DomainError) return reply.code(error.statusCode).send({ code: error.code, message: error.message, trace_id: request.id });
     if (error instanceof z.ZodError) return reply.code(400).send({ code: "BAD_REQUEST", message: error.issues[0]?.message ?? "提交内容不符合要求", trace_id: request.id });
     request.log.error(error);
@@ -808,6 +810,7 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     const repository = options.financeFactory?.(scope);
     if (!repository) return requireFactory(reply, options.financeFactory);
     const input = createImportBatchSchema.parse(request.body);
+    assertImportFileName(input.file_name);
     const batch = await repository.createImportBatch({ sourceType: input.source_type as ImportSourceType, fileName: input.file_name, fileSize: input.file_size, fileSha256: input.file_sha256, objectKey: input.object_key, accountId: input.account_id });
     return reply.code(201).send(batch);
   });
@@ -851,6 +854,10 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     const batch = await repository.getImportBatch(request.params.batchId);
     if (!batch) throw new DomainError("NOT_FOUND", "导入批次不存在", 404);
     if (batch.status === "uploaded") return batch;
+    if (Number(batch.file_size) !== body.byteLength) throw new DomainError("IMPORT_FILE_SIZE_MISMATCH", "文件大小与创建批次时不一致", 409);
+    if (String(batch.file_sha256).toLowerCase() !== actualSha256.toLowerCase()) throw new DomainError("IMPORT_FILE_HASH_MISMATCH", "文件摘要与创建批次时不一致", 409);
+    validateImportFile(batch.file_name, body);
+    assertImportFileSize(body.byteLength);
     const objectKey = importObjectKey(scope.householdId, request.params.batchId);
     await importObjectStore.put(objectKey, body);
     try {

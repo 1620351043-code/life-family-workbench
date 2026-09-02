@@ -1,9 +1,11 @@
 import { execFile } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { access, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, extname, join } from "node:path";
 import { promisify } from "node:util";
 import type { ImportObjectStore } from "./import-storage.js";
+import { ImportSecurityError, validateImportFile } from "./finance-import-security.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -89,21 +91,29 @@ export class LocalFinanceImportParser implements FinanceImportParser {
 
   async parse(input: FinanceImportParseInput) {
     const bytes = await this.objectStore.read(input.objectKey);
+    validateImportFile(input.fileName, bytes);
     const workDir = await mkdtemp(join(tmpdir(), "life-finance-parse-"));
-    const filePath = join(workDir, input.fileName.replaceAll("/", "_").replaceAll("\\", "_"));
+    const safeName = `import-${randomUUID()}${extname(input.fileName).toLowerCase()}`;
+    const filePath = join(workDir, safeName);
     await writeFile(filePath, bytes, { mode: 0o600 });
     try {
       const python = await firstAvailablePython();
-      const { stdout, stderr } = await execFileAsync(python, [parseWorkerScript(), "--file", filePath, "--source-type", input.sourceType], {
-        cwd: dirname(parseWorkerScript()),
-        maxBuffer: 64 * 1024 * 1024,
-        env: { ...process.env, PYTHONIOENCODING: "utf-8" },
-      });
+      const { stdout, stderr } = await execFileAsync(
+        python,
+        [parseWorkerScript(), "--file", filePath, "--source-type", input.sourceType, "--file-name", input.fileName],
+        {
+          cwd: dirname(parseWorkerScript()),
+          maxBuffer: 64 * 1024 * 1024,
+          timeout: 60_000,
+          env: { ...process.env, PYTHONIOENCODING: "utf-8" },
+        },
+      );
       if (!stdout.trim()) throw new Error(stderr.trim() || "解析 worker 没有返回结果");
       const result = JSON.parse(stdout) as ParsedImportResult;
       if (result.schema_version !== "life.finance.import.v1" || !Array.isArray(result.records)) throw new Error("解析 worker 返回格式不受支持");
       return result;
     } catch (error) {
+      if (error instanceof ImportSecurityError) throw error;
       const detail = error instanceof Error ? error.message : String(error);
       throw new Error(`账单解析失败：${detail}`);
     } finally {

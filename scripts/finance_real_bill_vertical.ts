@@ -6,6 +6,8 @@ import { PGlite } from "@electric-sql/pglite";
 import { buildServer } from "../src/api/server.js";
 import { SqlFinanceRepository } from "../src/api/finance-repository.js";
 import { LocalImportObjectStore } from "../src/api/import-storage.js";
+import { LocalFinanceImportParser } from "../src/api/finance-import-parser.js";
+import { runFinanceImportJob } from "../src/api/finance-import-worker.js";
 import type { DbPool } from "../src/api/database.js";
 
 const householdId = "00000000-0000-0000-0000-0000000000a1";
@@ -31,6 +33,7 @@ function splitSql(input: string) {
       }
       continue;
     }
+    if (!quote && char === "-" && next === "-") { while (index < input.length && input[index] !== "\n") index += 1; continue; }
     if (!quote && char === "$" && next === "$") {
       dollarTag = "$$";
       buffer += "$$";
@@ -57,7 +60,7 @@ function splitSql(input: string) {
 }
 
 async function migrate(db: PGlite) {
-  for (const file of ["0001_life_core_finance.sql", "0002_finance_import_state.sql", "0003_life_app_privileges.sql", "0004_family_space_ai.sql", "0005_finance_ledger_foundation.sql", "0006_finance_management_foundation.sql", "0007_finance_permissions.sql", "0008_finance_ai.sql", "0009_finance_production_hardening.sql", "0010_auth_sessions.sql", "0011_password_reset.sql", "0012_household_invitations.sql", "0013_member_sensitive_permissions.sql", "0014_data_rights_deletion_requests.sql"]) {
+    for (const file of ["0001_life_core_finance.sql", "0002_finance_import_state.sql", "0003_life_app_privileges.sql", "0004_family_space_ai.sql", "0005_finance_ledger_foundation.sql", "0006_finance_management_foundation.sql", "0007_finance_permissions.sql", "0008_finance_ai.sql", "0009_finance_production_hardening.sql", "0010_auth_sessions.sql", "0011_password_reset.sql", "0012_household_invitations.sql", "0013_member_sensitive_permissions.sql", "0014_data_rights_deletion_requests.sql", "0015_finance_import_jobs.sql"]) {
     let sql = await readFile(join(process.cwd(), "db/migrations", file), "utf8");
     sql = sql.replace("CREATE EXTENSION IF NOT EXISTS pgcrypto;", "-- pgcrypto is not bundled in PGlite").replaceAll("DEFAULT gen_random_uuid()", "");
     for (const statement of splitSql(sql)) await db.query(statement);
@@ -83,7 +86,8 @@ async function main() {
   const objectRoot = await mkdtemp(join("/private/tmp", "life-real-import-store-"));
   const objectStore = new LocalImportObjectStore(objectRoot);
   const repository = new SqlFinanceRepository(pool, scope, objectStore);
-  const app = buildServer({ resolveScope: () => scope, financeFactory: () => repository, importObjectStore: objectStore });
+  const parser = new LocalFinanceImportParser(objectStore);
+  const app = buildServer({ resolveScope: () => scope, financeFactory: () => repository, importObjectStore: objectStore, importParser: parser, importRunner: (targetScope, _batchId, jobId) => runFinanceImportJob(pool, parser, objectStore, targetScope, jobId) });
   const files = await readdir(billDir);
   const results: Array<Record<string, unknown>> = [];
 
@@ -98,8 +102,10 @@ async function main() {
     const upload = await app.inject({ method: "POST", url: `/api/finance/import-batches/${batchId}/upload`, headers: { "content-type": "application/octet-stream" }, payload: bytes });
     if (upload.statusCode !== 200) throw new Error(`上传 ${sourceType} 批次失败：${upload.body}`);
     const parsed = await app.inject({ method: "POST", url: `/api/finance/import-batches/${batchId}/parse` });
-    if (parsed.statusCode !== 200) throw new Error(`解析 ${sourceType} 批次失败：${parsed.body}`);
-    const parsedBatch = parsed.json();
+    if (parsed.statusCode !== 202) throw new Error(`解析 ${sourceType} 批次失败：${parsed.body}`);
+    const outcome = await runFinanceImportJob(pool, parser, objectStore, scope, parsed.json().job.id as string);
+    if (outcome !== "succeeded") throw new Error(`解析 ${sourceType} 批次未成功：${outcome}`);
+    const parsedBatch = (await app.inject({ method: "GET", url: `/api/finance/import-batches/${batchId}` })).json();
     const header = await app.inject({ method: "POST", url: `/api/finance/import-batches/${batchId}/header-confirmation`, payload: { sheet_name: parsedBatch.detected_sheet ?? "Sheet1", header_row: parsedBatch.detected_header_row ?? 1, data_start_row: (parsedBatch.detected_header_row ?? 1) + 1 } });
     if (header.statusCode !== 200) throw new Error(`确认表头失败：${header.body}`);
     const mapping = await app.inject({ method: "POST", url: `/api/finance/import-batches/${batchId}/mapping-confirmation`, payload: { mapping: parsedBatch.field_mapping ?? {}, parser_version: "real-bill-parser-v1" } });
