@@ -354,8 +354,8 @@ npm run production:preflight
 | G-010 | 重复提交和幂等 | `PARTIAL` | 财务关键写入已有；家庭、AI 和其它模块待全量检查 |
 | G-011 | 前端请求超时和取消 | `PARTIAL` | 请求版本保护已有；通用超时、AbortController 待补 |
 | G-012 | 网络断开和恢复 | `NOT_STARTED` | 核心页面明确离线状态，不做危险的静默写入重试 |
-| G-013 | 数据保留到期前提醒 | `NOT_STARTED` | 到期前 30 天向有权限 owner 展示提醒 |
-| G-014 | 主动删除原始账单 | `NOT_STARTED` | owner 可主动删除原件，正式账本保留并写审计 |
+| G-013 | 数据保留到期前提醒 | `DONE` | 到期前 30 天向有权限 owner 展示提醒；数据权利页与 API 已闭环，正式身份视觉/真实对象存储仍归 E-116/E-118 闸门 |
+| G-014 | 主动删除原始账单 | `DONE` | owner 可主动删除原件，正式账本保留并写审计；删除状态机、失败重试与审计已闭环 |
 | G-015 | 全量依赖漏洞检查 | `DONE` | 2026-08-26 官方 registry 结果为 0 |
 | G-016 | 安全测试/渗透检查 | `NOT_STARTED` | 越权、会话、CSRF、上传、对象存储和注入专项通过 |
 
@@ -443,7 +443,8 @@ npm run production:preflight
 - [ ] `E-119` COS live smoke
 - [ ] `E-120` 备份恢复和回滚
 - [x] `G-009` 文件上传安全（CSV/XLS/XLSX 首发范围；PDF/ZIP/OCR 归 E-113）
-- [ ] 关闭 `G-004`、`G-006`、`G-007`、`G-013`、`G-014`
+- [ ] 关闭 `G-004`、`G-006`、`G-007`
+- [x] `G-013`、`G-014` 原始账单提醒与主动删除（仓库侧闭环）
 
 阶段出口：财务可以在腾讯云 staging 使用真实身份、真实数据库和真实对象存储闭环运行。
 
@@ -584,7 +585,7 @@ npm run production:preflight
 
 1. `I-012`～`I-015`：建立备份、恢复、容量、发布和回滚演练证据（经用户授权，优先于待审核的 B-011 外部邮件配置）。
 2. `B-011`：待 `notify.wbutterfly.cn` 审核状态变化后，接入真实密码重置邮件 Endpoint 与专用测试邮箱读取接口，跑完已部署的目标 PostgreSQL + HTTPS 黑盒 E2E。
-3. `G-013`～`G-014`：补原始账单到期前提醒和所有者主动删除原件闭环。
+3. `G-013`～`G-014`：仓库侧已闭环；仅剩真实对象存储与正式身份视觉，归 E-116/E-118 验收。
 
 在 `B-011` 完成前，不应把财务移动端标记为生产闭环；但不阻止独立的灾备、备份与回滚演练继续推进。
 
@@ -653,3 +654,4 @@ npm run production:preflight
 | v0.23 | 2026-09-02 | 完成 I-012 仓库侧收口：`scripts/postgres_backup.sh`、systemd service/timer、staging 环境示例和 17 项契约测试正式纳入版本库，接入 `npm run postgres:backup-contract` 与 CI；本地契约与 bash 语法检查通过；SSH 扫码登录后仍需配置加密口令/rclone 远端并完成首次真实备份 | I-012 更新为 `PARTIAL / REPO_READY`；真实备份与 I-013 恢复演练仍未完成
 | v0.24 | 2026-09-02 | 完成 I-013 仓库侧准备：新增 `scripts/postgres_restore.sh` 与 18 项契约测试，接入 `npm run postgres:restore-contract` 和 CI；恢复目标仅允许 `life_restore*`，默认拒绝覆盖，恢复后按核心表计数校验；真实恢复演练仍待首次加密备份产出 | I-013 更新为 `PARTIAL / REPO_READY`
 | v0.25 | 2026-09-02 | 完成 I-014/I-015 仓库侧准备：新增 HTTPS/生产保护的负载测试驱动、fail-closed 回滚 dry-run 计划脚本，以及 10/13 项契约测试并接入 npm/CI；不执行真实压测、发布切换或删除 | I-014、I-015 更新为 `PARTIAL / REPO_READY`；真实 staging 环境证据待服务器登录后执行
+| v0.26 | 2026-09-02 | 完成 G-013/G-014 原始账单到期提醒与所有者主动删除：新增提醒查询、删除状态机、对象存储删除、来源记录清键、正式账本保留与审计；数据权利页新增提醒与二次确认流程；30 项测试、migration smoke、OpenAPI 68 paths/91 schemas、前端构建和远端 quality-gate 通过，PR #15 已合并 | G-013、G-014 更新为 `DONE`；真实对象存储与正式身份视觉仍归 E-116/E-118 闸门 |
