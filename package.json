@@ -17,7 +17,6 @@
     "staging:auth-preflight": "tsx scripts/staging_auth_preflight.ts",
     "staging:auth-contract": "node scripts/staging_auth_contract_test.mjs",
     "staging:auth-e2e": "node scripts/staging_auth_e2e.mjs",
-    "postgres:backup-contract": "node scripts/postgres_backup_contract_test.mjs",
     "finance:export-worker": "tsx scripts/finance_export_worker.ts",
     "finance:import-worker": "tsx scripts/finance_import_worker.ts",
     "finance:retention-worker": "tsx scripts/finance_retention_worker.ts",
