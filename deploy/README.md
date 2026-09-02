@@ -146,3 +146,13 @@ sudo systemctl enable --now life-staging-postgres-backup.timer
 仓库提供 `scripts/postgres_restore.sh` 和 `npm run postgres:restore-contract`（18 项静态契约检查）。脚本只允许恢复的 `LIFE_RESTORE_TARGET_DB` 以 `life_restore` 开头，并要求 `LIFE_RESTORE_CONFIRM=I_UNDERSTAND_THIS_RESTORES_ENCRYPTED_POSTGRES_BACKUP`；执行前先校验加密归档 SHA-256、解密、解包白名单、`pg_restore --list` 和目标库身份，目标库已有表时默认拒绝，只有显式设置 `LIFE_RESTORE_ALLOW_REPLACE=YES` 才允许覆盖。恢复完成后会按 `integrity.tsv` 比对核心表计数。
 
 首次真实演练必须由手动操作完成：从 `/var/backups/life/staging/postgres/<backup_id>` 选择加密归档，配置私有口令文件与独立 `life_restore_*` 数据库，执行恢复后再核对家庭数量、账本金额、来源关系、权限和审计。仓库侧契约通过不代表真实恢复已完成。
+
+## 8. I-014 staging 容量与压力测试
+
+仓库提供 `scripts/staging_load_test.mjs` 和 `npm run staging:load-contract`（10 项静态契约检查）。真实压力测试必须显式设置 `LIFE_LOAD_CONFIRM=I_UNDERSTAND_THIS_RUNS_LOAD_TEST`、HTTPS 地址、时长、并发数和 P95 阈值；默认禁止压测 `life.wbutterfly.cn`，需要设置 `LIFE_LOAD_ALLOW_PRODUCTION=YES` 才会放行。脚本不会打印密码、Cookie 或令牌，并会在 5xx 比例、网络错误或 P95 超阈值时以非零退出。
+
+仓库侧契约通过仅表示测试驱动可用，不表示 staging 已达到容量目标；真实并发家庭、超大账单、队列堆积、AI 超时和慢查询仍须在服务器上留档。
+
+## 9. I-015 发布与回滚演练
+
+仓库提供 `scripts/release_rollback_drill.sh` 和 `npm run release:rollback-contract`（13 项静态契约检查）。当前脚本只做 fail-closed dry-run：校验当前/上一 Tag、祖先关系、不可变发布目录和 migration 记录，并生成 `0600` 的计划 JSON；默认不切换目录、不重启服务、不删除文件。真实切换与回滚仍必须由人工在 staging 按 `deploy/ROLLBACK.md` 执行并留档。
