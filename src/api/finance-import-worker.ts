@@ -155,7 +155,8 @@ export async function runFinanceImportJob(pool: DbPool, parser: FinanceImportPar
     return succeeded ? "succeeded" : "skipped";
   } catch (error) {
     const outcome = await markImportJobFailure(pool, scope, claimed, error);
-    await writeImportJobAudit(pool, scope, jobId, outcome === "failed" ? "finance_import_parse_failed" : "finance_import_parse_retry", { status: "running" }, { status: outcome, error: error instanceof Error ? error.message.slice(0, 500) : "账单解析失败" });
+    const auditAction = outcome === "failed" ? "finance_import_parse_failed" : outcome === "skipped" ? "finance_import_parse_skipped" : "finance_import_parse_retry";
+    await writeImportJobAudit(pool, scope, jobId, auditAction, { status: "running" }, { status: outcome, error: error instanceof Error ? error.message.slice(0, 500) : "账单解析失败" });
     return outcome;
   }
 }
