@@ -22,6 +22,7 @@
     "finance:security-test": "python3 workers/finance_import_security_test.py",
     "finance:retention-worker": "tsx scripts/finance_retention_worker.ts",
     "postgres:backup-contract": "node scripts/postgres_backup_contract_test.mjs",
+    "postgres:restore-contract": "node scripts/postgres_restore_contract_test.mjs",
     "web:dev": "vite --config ui/app/vite.config.ts",
     "web:build": "vite build --config ui/app/vite.config.ts",
     "web:typecheck": "tsc -p ui/app/tsconfig.json --noEmit",
