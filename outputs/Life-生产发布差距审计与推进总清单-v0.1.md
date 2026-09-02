@@ -392,7 +392,7 @@ npm run production:preflight
 | I-009 | 保留期清理 worker | `PARTIAL` | 代码存在；生产定时、失败告警和重跑未验证 |
 | I-010 | 请求日志和错误聚合 | `NOT_STARTED` | trace ID、稳定错误码、隐私脱敏和检索能力完整 |
 | I-011 | 指标和告警 | `NOT_STARTED` | API、数据库、队列、COS、AI、磁盘和证书告警 |
-| I-012 | PostgreSQL 备份 | `PARTIAL / PREPARED` | 已提交 fail-closed 加密备份脚本、systemd timer、7/35 天保留和 rclone 跨位置校验契约；待腾讯云 SSH 会话恢复后配置私有口令/远端并完成首次真实备份 |
+| I-012 | PostgreSQL 备份 | `PARTIAL / REPO_READY` | 仓库侧已完成：fail-closed 加密备份脚本、systemd service/timer、环境示例、本地/远端 7/35 天保留、rclone 跨位置校验、17 项契约测试接入 npm/CI；真实部署仍待 SSH 扫码登录后配置私有口令/远端并完成首次备份 |
 | I-013 | 恢复演练 | `NOT_STARTED` | 从备份恢复到隔离环境并校验家庭边界和账本一致性 |
 | I-014 | 容量和压力测试 | `NOT_STARTED` | 并发家庭、超大账单、队列堆积、AI 超时和慢查询 |
 | I-015 | 发布和回滚演练 | `NOT_STARTED` | 前端、API、迁移和 worker 可回滚到上一 Tag |
@@ -650,3 +650,4 @@ npm run production:preflight
 | v0.20 | 2026-09-02 | 完成 E-116 正式身份财务移动端 E2E：真实登录、首页/预算环/趋势下钻、手动记账编辑与撤销、银行/微信/支付宝/记账 App 四类 CSV 上传、表头预览、字段映射、跨来源重复候选确认、统一账本提交、导出与过期 409、移动端撤销批次；修复导入撤销后的重复返回按钮；构建、类型检查、OpenAPI（61 paths/88 schemas）、22 项 API 测试、财务完整视觉回归与 E2E 全部通过 | E-116 `DONE`；E-015/E-117 证据补充；审计证据限制更新为本地 PGlite + 真实 Cookie，目标原生 PostgreSQL/真机/HTTPS 待部署闸门 |
 | v0.21 | 2026-09-02 | 完成 E-114 解析任务异步队列化：新增 `finance_import_job` 迁移与独立 worker，HTTP 仅创建任务并返回 202，提供暂停/恢复/取消/重试和批次任务状态，移动端轮询同步；修复异步完成后字段映射未回填及本地并发 500。迁移烟测 241 statements/31 tables/32 policies，OpenAPI 66 paths/89 schemas，22 项 API 测试、正式身份财务移动端 E2E 与三档完整视觉回归全部通过；远端 quality-gate 通过，PR #9 已合并到 main | E-114 `DONE`；证据仍为本地 PGlite + 真实 Cookie，目标原生 PostgreSQL/HTTPS 由 E-118/B-011 闸门接管
 | v0.22 | 2026-09-02 | 完成 E-115 大文件和恶意文件防护并补齐真实账单异步回放：新增服务端文件类型/名称/大小/内容校验、XLSX ZIP 安全扫描、临时文件加固和 Python worker 超时；恶意文件直接失败不重试；6 项安全测试、安全路由测试、6 项 Python worker 安全测试、29/29 API 测试、迁移/OpenAPI/构建/财务 E2E/三档视觉回归全部通过；修复真实账单脚本 SQL 行注释切分，四类真实账单（银行 547、微信 367、支付宝 420、记账 App 5 行）全部异步解析、关联并提交 1,331 笔 | E-115、G-009 更新为 `DONE`（PDF/ZIP/OCR 仍归 E-113）；`npm run finance:security-test` 可复跑
+| v0.23 | 2026-09-02 | 完成 I-012 仓库侧收口：`scripts/postgres_backup.sh`、systemd service/timer、staging 环境示例和 17 项契约测试正式纳入版本库，接入 `npm run postgres:backup-contract` 与 CI；本地契约与 bash 语法检查通过；SSH 扫码登录后仍需配置加密口令/rclone 远端并完成首次真实备份 | I-012 更新为 `PARTIAL / REPO_READY`；真实备份与 I-013 恢复演练仍未完成

@@ -60,6 +60,9 @@ jobs:
       - name: Staging auth black-box contract
         run: npm run staging:auth-contract
 
+      - name: PostgreSQL backup contract
+        run: npm run postgres:backup-contract
+
 
       - name: Web production build
         run: npm run web:build
