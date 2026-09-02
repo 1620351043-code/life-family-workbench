@@ -140,3 +140,9 @@ sudo systemctl enable --now life-staging-postgres-backup.timer
 ```
 
 首次手动运行前必须确认：备份口令文件为 `0600 root:root`、rclone 目标为空的专用前缀、`DATABASE_URL` 指向 staging 而非 production。执行一次 `sudo systemctl start life-staging-postgres-backup.service` 后，检查 `systemctl status`、journal、加密归档、SHA-256 文件和 `remote-verified.txt`；实际恢复到隔离库的演练归 I-013，不能用“备份成功”替代恢复验证。
+
+## 7. I-013 隔离恢复演练
+
+仓库提供 `scripts/postgres_restore.sh` 和 `npm run postgres:restore-contract`（18 项静态契约检查）。脚本只允许恢复的 `LIFE_RESTORE_TARGET_DB` 以 `life_restore` 开头，并要求 `LIFE_RESTORE_CONFIRM=I_UNDERSTAND_THIS_RESTORES_ENCRYPTED_POSTGRES_BACKUP`；执行前先校验加密归档 SHA-256、解密、解包白名单、`pg_restore --list` 和目标库身份，目标库已有表时默认拒绝，只有显式设置 `LIFE_RESTORE_ALLOW_REPLACE=YES` 才允许覆盖。恢复完成后会按 `integrity.tsv` 比对核心表计数。
+
+首次真实演练必须由手动操作完成：从 `/var/backups/life/staging/postgres/<backup_id>` 选择加密归档，配置私有口令文件与独立 `life_restore_*` 数据库，执行恢复后再核对家庭数量、账本金额、来源关系、权限和审计。仓库侧契约通过不代表真实恢复已完成。

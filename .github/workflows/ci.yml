@@ -63,6 +63,9 @@ jobs:
       - name: PostgreSQL backup contract
         run: npm run postgres:backup-contract
 
+      - name: PostgreSQL restore contract
+        run: npm run postgres:restore-contract
+
 
       - name: Web production build
         run: npm run web:build
