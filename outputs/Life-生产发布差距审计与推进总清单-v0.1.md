@@ -347,8 +347,8 @@ npm run production:preflight
 | G-003 | RLS 家庭隔离 | `PARTIAL` | PGlite 兼容验证通过；原生 PostgreSQL 待验证 |
 | G-004 | 登录和敏感接口限流 | `PARTIAL` | 登录、注册、密码重置、邀请码预览/接受已按标识和 IP 哈希键限流并返回 429/Retry-After；共享存储及上传、评论、导入、AI 分级限流待补 |
 | G-005 | 密码强度和泄漏口令策略 | `PARTIAL` | 注册与重置密码已强制 8–128 位且登录/重置申请不泄露账户存在性；泄漏口令库和完整策略待补 |
-| G-006 | CSRF 防护 | `NOT_STARTED` | SameSite 之外补充 token 或严格 Origin/Referer 校验 |
-| G-007 | 安全响应头 | `NOT_STARTED` | CSP、HSTS、X-Frame-Options、Referrer-Policy 等 |
+| G-006 | CSRF 防护 | `DONE` | `/api/*` 的 POST/PUT/PATCH/DELETE 已按 Origin/Referer 与请求主机/`LIFE_PUBLIC_APP_URL` 严格同源校验；跨域与 `null` 来源返回 403，无来源非浏览器客户端不受影响 |
+| G-007 | 安全响应头 | `PARTIAL / REPO_READY` | API `onSend` 与 Caddy 模板已统一设置 X-Content-Type-Options、X-Frame-Options、Referrer-Policy、Permissions-Policy、CSP；staging/production 另加 HSTS；B-011 契约已新增断言，待部署到 staging 后 live 复核 |
 | G-008 | XSS 和富文本边界 | `PARTIAL` | React 默认转义；附件、AI 和未来富文本需专项测试 |
 | G-009 | 文件上传安全 | `DONE` | CSV/XLS/XLSX 首发范围闭环：扩展名/名称/大小/内容 magic、ZIP 结构和宏/外部链接/加密/路径/解压体积/临时文件/worker 超时均已覆盖；PDF/ZIP/OCR 导入仍归 E-113 |
 | G-010 | 重复提交和幂等 | `PARTIAL` | 财务关键写入已有；家庭、AI 和其它模块待全量检查 |
@@ -443,7 +443,8 @@ npm run production:preflight
 - [ ] `E-119` COS live smoke
 - [ ] `E-120` 备份恢复和回滚
 - [x] `G-009` 文件上传安全（CSV/XLS/XLSX 首发范围；PDF/ZIP/OCR 归 E-113）
-- [ ] 关闭 `G-004`、`G-006`、`G-007`
+- [ ] 关闭 `G-004`、`G-007`（G-007 待 staging 安全头 live 复核）
+- [x] `G-006` 严格同源 CSRF 校验（仓库侧闭环）
 - [x] `G-013`、`G-014` 原始账单提醒与主动删除（仓库侧闭环）
 
 阶段出口：财务可以在腾讯云 staging 使用真实身份、真实数据库和真实对象存储闭环运行。
@@ -601,7 +602,7 @@ npm run production:preflight
 | 财务解析同步占用 HTTP | P0 | 120 秒开发代理超时 | 完成 E-114 |
 | 生产 COS 尚未验证 | P0 | 生产 fail-closed | 完成 E-119/I-004 |
 | 原生 PostgreSQL/RLS 未验证 | P0 | PGlite 兼容测试 | 完成 E-118/I-003 |
-| 限流和安全头未完整 | P0 | 登录、注册、密码重置、邀请码已有单进程限流 | 完成共享限流、其他敏感接口分级限流和 G-007 |
+| 限流和安全头未完整 | P0 | 登录、注册、密码重置、邀请码已有单进程限流；安全头已代码/契约闭环 | 完成共享限流、其他敏感接口分级限流；G-007 待 staging 部署后 live 复核 |
 | 缺少备份恢复和回滚演练 | P0 | 仅有说明文档 | 完成 I-012～I-015 |
 | 家庭 AI 管理和记忆 UI 缺失 | P0 | 财务连接契约部分存在 | 完成 F-004～F-009 |
 | PDF/ZIP/OCR 未实现 | P1 | 当前 CSV/XLS/XLSX 可用 | 产品确认首发范围或完成 E-113 |
@@ -655,3 +656,4 @@ npm run production:preflight
 | v0.24 | 2026-09-02 | 完成 I-013 仓库侧准备：新增 `scripts/postgres_restore.sh` 与 18 项契约测试，接入 `npm run postgres:restore-contract` 和 CI；恢复目标仅允许 `life_restore*`，默认拒绝覆盖，恢复后按核心表计数校验；真实恢复演练仍待首次加密备份产出 | I-013 更新为 `PARTIAL / REPO_READY`
 | v0.25 | 2026-09-02 | 完成 I-014/I-015 仓库侧准备：新增 HTTPS/生产保护的负载测试驱动、fail-closed 回滚 dry-run 计划脚本，以及 10/13 项契约测试并接入 npm/CI；不执行真实压测、发布切换或删除 | I-014、I-015 更新为 `PARTIAL / REPO_READY`；真实 staging 环境证据待服务器登录后执行
 | v0.26 | 2026-09-02 | 完成 G-013/G-014 原始账单到期提醒与所有者主动删除：新增提醒查询、删除状态机、对象存储删除、来源记录清键、正式账本保留与审计；数据权利页新增提醒与二次确认流程；30 项测试、migration smoke、OpenAPI 68 paths/91 schemas、前端构建和远端 quality-gate 通过，PR #15 已合并 | G-013、G-014 更新为 `DONE`；真实对象存储与正式身份视觉仍归 E-116/E-118 闸门 |
+| v0.27 | 2026-09-02 | 完成 G-006 严格同源校验与 G-007 安全头加固：API 对 `/api/*` 不安全方法校验 Origin/Referer，跨域返回 403；`onSend` 与 Caddy 模板统一添加 X-Frame-Options、X-Content-Type-Options、Referrer-Policy、Permissions-Policy、CSP，staging/production 另加 HSTS；B-011 契约新增安全头断言；41 项测试、staging contract、OpenAPI、前端构建和远端 quality-gate 通过，PR #17 已合并 | G-006 更新为 `DONE`；G-007 更新为 `PARTIAL / REPO_READY`，待 staging 部署后 live 复核 |
