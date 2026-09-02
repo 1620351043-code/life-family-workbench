@@ -66,6 +66,12 @@ jobs:
       - name: PostgreSQL restore contract
         run: npm run postgres:restore-contract
 
+      - name: Staging load test contract
+        run: npm run staging:load-contract
+
+      - name: Release rollback drill contract
+        run: npm run release:rollback-contract
+
 
       - name: Web production build
         run: npm run web:build

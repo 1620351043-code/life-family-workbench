@@ -394,8 +394,8 @@ npm run production:preflight
 | I-011 | 指标和告警 | `NOT_STARTED` | API、数据库、队列、COS、AI、磁盘和证书告警 |
 | I-012 | PostgreSQL 备份 | `PARTIAL / REPO_READY` | 仓库侧已完成：fail-closed 加密备份脚本、systemd service/timer、环境示例、本地/远端 7/35 天保留、rclone 跨位置校验、17 项契约测试接入 npm/CI；真实部署仍待 SSH 扫码登录后配置私有口令/远端并完成首次备份 |
 | I-013 | 恢复演练 | `PARTIAL / REPO_READY` | 仓库侧已提供隔离恢复脚本与 18 项契约测试：仅允许 `life_restore*` 目标库、SHA-256/解密/解包白名单/目标库身份校验、默认拒绝覆盖、恢复后按核心表计数校验；真实演练仍待 I-012 首次备份后执行 |
-| I-014 | 容量和压力测试 | `NOT_STARTED` | 并发家庭、超大账单、队列堆积、AI 超时和慢查询 |
-| I-015 | 发布和回滚演练 | `NOT_STARTED` | 前端、API、迁移和 worker 可回滚到上一 Tag |
+| I-014 | 容量和压力测试 | `PARTIAL / REPO_READY` | 仓库侧已提供 HTTPS/生产保护、并发/时长/P95 阈值、脱敏报告的负载测试驱动与 10 项契约测试；真实并发家庭、超大账单、队列堆积、AI 超时和慢查询仍待 staging live 留档 |
+| I-015 | 发布和回滚演练 | `PARTIAL / REPO_READY` | 仓库侧已提供 fail-closed dry-run 回滚计划脚本与 13 项契约测试：校验 Tag/祖先/发布目录/migration 并生成 0600 计划，不执行切换或删除；真实 staging 发布、回滚和再验收仍未完成 |
 | I-016 | Staging 全流程 | `NOT_STARTED` | 第 10 节发布路径完整通过并保留证据 |
 
 ---
@@ -652,3 +652,4 @@ npm run production:preflight
 | v0.22 | 2026-09-02 | 完成 E-115 大文件和恶意文件防护并补齐真实账单异步回放：新增服务端文件类型/名称/大小/内容校验、XLSX ZIP 安全扫描、临时文件加固和 Python worker 超时；恶意文件直接失败不重试；6 项安全测试、安全路由测试、6 项 Python worker 安全测试、29/29 API 测试、迁移/OpenAPI/构建/财务 E2E/三档视觉回归全部通过；修复真实账单脚本 SQL 行注释切分，四类真实账单（银行 547、微信 367、支付宝 420、记账 App 5 行）全部异步解析、关联并提交 1,331 笔 | E-115、G-009 更新为 `DONE`（PDF/ZIP/OCR 仍归 E-113）；`npm run finance:security-test` 可复跑
 | v0.23 | 2026-09-02 | 完成 I-012 仓库侧收口：`scripts/postgres_backup.sh`、systemd service/timer、staging 环境示例和 17 项契约测试正式纳入版本库，接入 `npm run postgres:backup-contract` 与 CI；本地契约与 bash 语法检查通过；SSH 扫码登录后仍需配置加密口令/rclone 远端并完成首次真实备份 | I-012 更新为 `PARTIAL / REPO_READY`；真实备份与 I-013 恢复演练仍未完成
 | v0.24 | 2026-09-02 | 完成 I-013 仓库侧准备：新增 `scripts/postgres_restore.sh` 与 18 项契约测试，接入 `npm run postgres:restore-contract` 和 CI；恢复目标仅允许 `life_restore*`，默认拒绝覆盖，恢复后按核心表计数校验；真实恢复演练仍待首次加密备份产出 | I-013 更新为 `PARTIAL / REPO_READY`
+| v0.25 | 2026-09-02 | 完成 I-014/I-015 仓库侧准备：新增 HTTPS/生产保护的负载测试驱动、fail-closed 回滚 dry-run 计划脚本，以及 10/13 项契约测试并接入 npm/CI；不执行真实压测、发布切换或删除 | I-014、I-015 更新为 `PARTIAL / REPO_READY`；真实 staging 环境证据待服务器登录后执行
