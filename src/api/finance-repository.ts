@@ -51,12 +51,28 @@ export type ImportBatch = {
   detected_header_row: number | null;
   detected_sheet: string | null;
   raw_retention_until: string;
+  raw_delete_status: RawImportDeleteStatus;
+  raw_deleted_at: string | null;
+  raw_delete_error: string | null;
   counts: { rows: number; invalid?: number };
   parse_job?: FinanceImportJob | null;
   field_mapping?: Record<string, string>;
   header_preview?: { sheets: Array<{ sheet_name: string | null; header_row: number | null; data_start_row: number | null; header_score: number; field_mapping: Record<string, string>; preview_rows: ParsedImportPreviewRow[]; skipped_rows: number; empty?: boolean }> };
 };
 
+export type RawImportDeleteStatus = "pending" | "running" | "deleted" | "failed" | "not_required";
+export type RawImportRetentionItem = {
+  id: string;
+  file_name: string;
+  source_type: ImportSourceType;
+  status: ImportStatus;
+  raw_retention_until: string;
+  days_until_expiry: number;
+  raw_delete_status: RawImportDeleteStatus;
+  raw_deleted_at: string | null;
+  raw_delete_error: string | null;
+  row_count: number;
+};
 export type CreateImportBatchInput = { sourceType: ImportSourceType; fileName: string; fileSize: number; fileSha256: string; objectKey: string; accountId?: string | null };
 export type HeaderConfirmationInput = { sheetName: string; headerRow: number; dataStartRow: number; dataEndRow?: number };
 export type MappingConfirmationInput = { mapping: Record<string, string>; parserVersion: string };
@@ -318,6 +334,8 @@ export interface FinanceRepository {
   getReconciliation(batchId: string, page: number, pageSize: number): Promise<ReconciliationResponse>;
   decideReconciliation(batchId: string, input: ReconciliationDecisionInput): Promise<ReconciliationCandidate>;
   commitImportBatch(batchId: string, input: CommitImportInput): Promise<CommitImportResponse>;
+  listRawImportRetention(noticeDays?: number, limit?: number): Promise<RawImportRetentionItem[]>;
+  deleteRawImportFile(batchId: string): Promise<ImportBatch>;
   revokeImportBatch(batchId: string, idempotencyKey?: string): Promise<ImportBatch>;
 }
 
@@ -333,6 +351,9 @@ type BatchRow = {
   detected_sheet: string | null;
   raw_retention_until: string;
   row_count: number;
+  raw_delete_status: RawImportDeleteStatus;
+  raw_deleted_at: string | null;
+  raw_delete_error: string | null;
   invalid_row_count: number;
   field_mapping: Record<string, string>;
   header_preview: ImportBatch["header_preview"];
@@ -538,6 +559,9 @@ function batchSelectSql() {
            ib.detected_sheet,
            ib.raw_retention_until::text AS raw_retention_until,
            (SELECT COUNT(*)::int FROM import_row ir WHERE ir.household_id = ib.household_id AND ir.import_batch_id = ib.id) AS row_count,
+           ib.raw_delete_status,
+           ib.raw_deleted_at::text AS raw_deleted_at,
+           ib.raw_delete_error,
            (SELECT COUNT(*)::int FROM import_row ir WHERE ir.household_id = ib.household_id AND ir.import_batch_id = ib.id AND ir.status = 'invalid') AS invalid_row_count,
            ib.field_mapping,
            ib.header_preview,
@@ -583,7 +607,10 @@ function batchListSelectSql() {
            fij.error_message AS parse_job_error_message,
            fij.created_at::text AS parse_job_created_at,
            fij.started_at::text AS parse_job_started_at,
-           fij.completed_at::text AS parse_job_completed_at
+           fij.completed_at::text AS parse_job_completed_at,
+           ib.raw_delete_status,
+           ib.raw_deleted_at::text AS raw_deleted_at,
+           ib.raw_delete_error
       FROM import_batch ib
       JOIN financial_source fs ON fs.household_id = ib.household_id AND fs.id = ib.source_id
       LEFT JOIN finance_import_job fij ON fij.household_id = ib.household_id AND fij.import_batch_id = ib.id
@@ -605,6 +632,9 @@ function mapBatch(row: BatchRow): ImportBatch {
     detected_header_row: row.detected_header_row,
     detected_sheet: row.detected_sheet,
     raw_retention_until: row.raw_retention_until,
+    raw_delete_status: row.raw_delete_status ?? "pending",
+    raw_deleted_at: row.raw_deleted_at ?? null,
+    raw_delete_error: row.raw_delete_error ?? null,
     counts: { rows: Number(row.row_count ?? 0), invalid: Number(row.invalid_row_count ?? 0) },
     parse_job: row.parse_job_id ? { id: row.parse_job_id, batch_id: row.id, status: row.parse_job_status ?? "queued", attempts: Number(row.parse_job_attempts ?? 0), max_attempts: Number(row.parse_job_max_attempts ?? 3), next_attempt_at: row.parse_job_next_attempt_at, error_code: row.parse_job_error_code, error_message: row.parse_job_error_message, created_at: row.parse_job_created_at ?? "", started_at: row.parse_job_started_at, completed_at: row.parse_job_completed_at } : null,
     field_mapping: row.field_mapping ?? {},
@@ -683,7 +713,7 @@ async function insertFilter(client: DbClient, scope: FinanceScope, filterType: D
 }
 
 export class SqlFinanceRepository implements FinanceRepository {
-  constructor(private readonly pool: DbPool, private readonly scope: FinanceScope, private readonly aiMemoryStore?: ImportObjectStore) {}
+  constructor(private readonly pool: DbPool, private readonly scope: FinanceScope, private readonly objectStore?: ImportObjectStore) {}
 
   async listAccounts(): Promise<FinanceAccount[]> {
     return inTenantTransaction(this.pool, this.scope, async (client) => {
@@ -1444,11 +1474,11 @@ export class SqlFinanceRepository implements FinanceRepository {
         }
       }
       let memoryArtifactId: string | null = null;
-      if (memoryAllowed && this.aiMemoryStore) {
+      if (memoryAllowed && this.objectStore) {
         memoryArtifactId = randomUUID();
         const memoryBytes = Buffer.from(JSON.stringify(memoryPayload), "utf8");
         const memoryObjectKey = aiMemoryObjectKey(this.scope.householdId, memoryArtifactId);
-        await this.aiMemoryStore.put(memoryObjectKey, memoryBytes);
+        await this.objectStore.put(memoryObjectKey, memoryBytes);
         await client.query(
           `INSERT INTO ai_memory_artifact (id, household_id, owner_user_id, artifact_type, object_key, content_sha256, retention_until)
            VALUES ($1, $2, NULL, 'summary', $3, $4, now() + interval '365 days')`,
@@ -2319,6 +2349,88 @@ export class SqlFinanceRepository implements FinanceRepository {
       );
       await writeFinanceAudit(client, this.scope, "finance_import_parse_retried", "finance_import_job", job.id, { status: "failed or cancelled" }, { status: job.status });
       return job;
+    });
+  }
+
+  async listRawImportRetention(noticeDays = 30, limit = 50): Promise<RawImportRetentionItem[]> {
+    return inTenantTransaction(this.pool, this.scope, async (client) => {
+      await assertFinanceOwner(client, this.scope);
+      const result = await client.query<RawImportRetentionItem>(
+        `SELECT ib.id::text AS id, ib.file_name, fs.source_type, ib.status,
+                ib.raw_retention_until::text AS raw_retention_until,
+                GREATEST(0, CEIL(EXTRACT(EPOCH FROM (ib.raw_retention_until - now())) / 86400))::int AS days_until_expiry,
+                ib.raw_delete_status, ib.raw_deleted_at::text AS raw_deleted_at, ib.raw_delete_error,
+                (SELECT COUNT(*)::int FROM import_row ir WHERE ir.household_id = ib.household_id AND ir.import_batch_id = ib.id) AS row_count
+           FROM import_batch ib
+           JOIN financial_source fs ON fs.household_id = ib.household_id AND fs.id = ib.source_id
+          WHERE ib.household_id = $1
+            AND ib.raw_delete_status NOT IN ('deleted', 'not_required')
+            AND ib.raw_retention_until <= now() + ($3::integer * interval '1 day')
+          ORDER BY ib.raw_retention_until ASC
+          LIMIT $2`,
+        [this.scope.householdId, Math.min(Math.max(Math.trunc(limit), 1), 50), noticeDays],
+      );
+      return result.rows.map((row) => ({ ...row, days_until_expiry: Number(row.days_until_expiry), row_count: Number(row.row_count) }));
+    });
+  }
+
+  async deleteRawImportFile(batchId: string): Promise<ImportBatch> {
+    const alreadyDeleted = await inTenantTransaction(this.pool, this.scope, async (client) => {
+      await assertFinanceOwner(client, this.scope);
+      const current = await client.query<{ id: string; raw_delete_status: RawImportDeleteStatus }>(
+        `SELECT id::text AS id, raw_delete_status
+           FROM import_batch
+          WHERE household_id = $1 AND id = $2
+          FOR UPDATE`,
+        [this.scope.householdId, batchId],
+      );
+      const row = requireRow(current.rows, "NOT_FOUND", "导入批次不存在");
+      if (row.raw_delete_status === "deleted" || row.raw_delete_status === "not_required") return true;
+      if (row.raw_delete_status === "running") throw new DomainError("IMPORT_RAW_DELETE_IN_PROGRESS", "原始账单正在删除，请稍后重试", 409);
+      await client.query(
+        `UPDATE import_batch SET raw_delete_status = 'running', raw_delete_attempts = raw_delete_attempts + 1, raw_delete_error = NULL, updated_at = now()
+          WHERE household_id = $1 AND id = $2`,
+        [this.scope.householdId, row.id],
+      );
+      await writeFinanceAudit(client, this.scope, "finance_import_raw_owner_delete_started", "import_batch", row.id, { raw_delete_status: row.raw_delete_status }, { raw_delete_status: "running" });
+      return false;
+    });
+    if (alreadyDeleted) {
+      const current = await this.getImportBatch(batchId);
+      if (!current) throw new DomainError("NOT_FOUND", "导入批次不存在");
+      return current;
+    }
+    if (!this.objectStore) throw new DomainError("IMPORT_STORE_NOT_CONFIGURED", "账单对象存储未配置", 503);
+    try {
+      await this.objectStore.remove(importObjectKey(this.scope.householdId, batchId));
+    } catch (error) {
+      const message = error instanceof Error ? error.message.slice(0, 500) : "原始账单删除失败";
+      await inTenantTransaction(this.pool, this.scope, async (client) => {
+        await assertFinanceOwner(client, this.scope);
+        await client.query(
+          `UPDATE import_batch SET raw_delete_status = 'failed', raw_delete_error = $3, updated_at = now()
+            WHERE household_id = $1 AND id = $2 AND raw_delete_status = 'running'`,
+          [this.scope.householdId, batchId, message],
+        );
+        await writeFinanceAudit(client, this.scope, "finance_import_raw_owner_delete_failed", "import_batch", batchId, { raw_delete_status: "running" }, { raw_delete_status: "failed", error: message });
+      });
+      throw new DomainError("IMPORT_RAW_DELETE_FAILED", "原始账单删除失败，请稍后重试", 502);
+    }
+    return inTenantTransaction(this.pool, this.scope, async (client) => {
+      await assertFinanceOwner(client, this.scope);
+      await client.query(
+        `UPDATE import_batch
+            SET raw_delete_status = 'deleted', raw_deleted_at = now(), raw_delete_error = NULL,
+                header_preview = '{"sheets":[]}'::jsonb, updated_at = now()
+          WHERE household_id = $1 AND id = $2 AND raw_delete_status = 'running'`,
+        [this.scope.householdId, batchId],
+      );
+      await client.query(
+        `UPDATE source_record SET raw_object_key = NULL WHERE household_id = $1 AND import_batch_id = $2`,
+        [this.scope.householdId, batchId],
+      );
+      await writeFinanceAudit(client, this.scope, "finance_import_raw_owner_deleted", "import_batch", batchId, { raw_delete_status: "running" }, { raw_delete_status: "deleted", ledger_and_source_records_retained: true, header_preview_removed: true });
+      return this.getBatchInTransaction(client, batchId);
     });
   }
 

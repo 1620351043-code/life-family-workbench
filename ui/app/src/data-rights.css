@@ -66,6 +66,28 @@
 .data-confirm-sheet input { min-height: 48px; border: 1px solid rgba(111,83,140,.18); border-radius: 14px; padding: 0 13px; background: white; font-size: 16px; }
 .danger-button { min-height: 48px; border: 0; border-radius: 15px; padding: 0 14px; background: #c64259; color: white; font-weight: 780; }
 .danger-button:disabled { opacity: .42; }
+.status-chip.done { background: #e7f7ef; color: #33815d; }
+.status-chip.danger { background: #fff0f2; color: #b94359; }
+.raw-retention-section { border-color: rgba(145,111,212,.18); }
+.raw-retention-lead { margin: -3px 0 13px; color: var(--life-text-secondary); font-size: var(--life-text-supporting); line-height: 1.55; }
+.raw-retention-loading, .raw-retention-empty { min-height: 94px; display: grid; place-items: center; align-content: center; gap: 6px; padding: 12px; text-align: center; color: var(--life-text-secondary); font-size: var(--life-text-supporting); }
+.raw-retention-empty span { width: 30px; height: 30px; display: grid; place-items: center; border-radius: 50%; background: #e7f7ef; color: #33815d; font-weight: 850; }
+.raw-retention-empty strong { color: var(--life-text-body); font-size: var(--life-text-body); }
+.raw-retention-empty p { margin: 0; }
+.raw-retention-list { display: grid; gap: 8px; margin-top: 5px; }
+.raw-retention-row { min-height: 108px; display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; align-items: center; gap: 11px; padding: 14px 0; border-top: 1px solid rgba(78,59,99,.08); }
+.raw-retention-row:first-child { border-top: 0; }
+.raw-retention-row.deleted { opacity: .62; }
+.raw-file-icon { width: 44px; height: 44px; display: grid; place-items: center; border-radius: 14px; background: linear-gradient(145deg, #7d65db, #9b75d4); color: white; font-size: 18px; box-shadow: 0 7px 14px rgba(106,78,178,.18); }
+.raw-retention-copy { min-width: 0; }
+.raw-retention-copy strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--life-text-body); line-height: 1.3; }
+.raw-retention-copy p { margin: 4px 0 6px; color: var(--life-text-secondary); font-size: var(--life-text-supporting); line-height: 1.45; }
+.raw-retention-copy small { display: block; color: #8f849b; font-size: 11px; line-height: 1.5; }
+.raw-delete-error { color: #b94359; }
+.raw-retention-actions { display: grid; justify-items: end; gap: 7px; align-self: center; }
+.raw-delete-button { min-height: 44px; border: 1px solid rgba(190,66,87,.22); border-radius: 13px; padding: 0 11px; background: #fff6f7; color: #b73e54; font-weight: 720; white-space: nowrap; }
+.raw-delete-button:disabled { opacity: .45; color: var(--life-text-secondary); border-color: rgba(80,60,90,.1); background: #f6f4f7; }
+.raw-delete-sheet { max-height: min(760px, 88dvh); overflow: auto; }
 @media (max-width: 350px) {
   .data-rights-header { margin-right: -12px; margin-left: -12px; padding-right: 12px; padding-left: 12px; }
   .data-rights-hero { grid-template-columns: 82px 1fr; padding: 17px; }
@@ -75,5 +97,8 @@
   .export-row > :last-child { grid-column: 2; justify-self: start; }
   .danger-zone > article, .deletion-plan { grid-template-columns: 1fr; }
   .danger-zone > article button, .cancel-plan-button { justify-self: stretch; }
+  .raw-retention-row { grid-template-columns: 44px minmax(0, 1fr); gap: 9px; }
+  .raw-retention-actions { grid-column: 2; justify-items: start; }
+  .raw-retention-copy small { white-space: normal; }
   .plan-timeline { display: none; }
 }

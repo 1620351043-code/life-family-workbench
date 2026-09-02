@@ -171,6 +171,19 @@ export type FinanceImportSource = "bank" | "alipay" | "wechat" | "bookkeeping_ap
 export type FinanceImportStatus = "created" | "uploaded" | "scanning" | "header_detected" | "mapping_pending" | "normalized" | "matching" | "reconciliation_pending" | "confirmed" | "committed" | "failed" | "cancelled" | "revoked";
 export type FinanceImportJobStatus = "queued" | "running" | "paused" | "succeeded" | "failed" | "cancelled";
 export type FinanceImportJob = { id: string; batch_id: string; status: FinanceImportJobStatus; attempts: number; max_attempts: number; next_attempt_at: string | null; error_code: string | null; error_message: string | null; created_at: string; started_at: string | null; completed_at: string | null };
+export type RawImportDeleteStatus = "pending" | "running" | "deleted" | "failed" | "not_required";
+export type RawImportRetentionItem = {
+  id: string;
+  file_name: string;
+  source_type: FinanceImportSource;
+  status: FinanceImportStatus;
+  raw_retention_until: string;
+  days_until_expiry: number;
+  raw_delete_status: RawImportDeleteStatus;
+  raw_deleted_at: string | null;
+  raw_delete_error: string | null;
+  row_count: number;
+};
 export type FinanceImportBatch = {
   id: string;
   file_name?: string;
@@ -180,6 +193,9 @@ export type FinanceImportBatch = {
   detected_header_row: number | null;
   detected_sheet: string | null;
   raw_retention_until: string;
+  raw_delete_status: RawImportDeleteStatus;
+  raw_deleted_at: string | null;
+  raw_delete_error: string | null;
   counts: { rows: number; invalid?: number };
   parse_job?: FinanceImportJob | null;
   field_mapping?: Record<string, string>;
@@ -313,5 +329,7 @@ export const financeApi = {
   getImportReconciliation: (batchId: string) => request<FinanceReconciliationResponse>(`/api/finance/import-batches/${batchId}/reconciliation?page=1&page_size=50`),
   decideImportReconciliation: (batchId: string, input: { candidate_id: string; decision: string; expected_version: number; reason?: string }) => request<FinanceReconciliationCandidate>(`/api/finance/import-batches/${batchId}/reconciliation/decisions`, { method: "POST", body: JSON.stringify(input) }),
   commitImportBatch: (batchId: string, input: { expected_version: number; confirm_summary_hash: string }, idempotencyKey: string) => request<{ batch: FinanceImportBatch; inserted_transactions: number; linked_records: number; pending_records: number; failed_records: number }>(`/api/finance/import-batches/${batchId}/commit`, { method: "POST", headers: { "idempotency-key": idempotencyKey }, body: JSON.stringify(input) }),
+  listRawImportRetention: (noticeDays = 30) => request<{ items: RawImportRetentionItem[] }>(`/api/finance/import-retention?notice_days=${noticeDays}&limit=50`),
+  deleteRawImportFile: (batchId: string) => request<FinanceImportBatch>(`/api/finance/import-batches/${batchId}/raw`, { method: "DELETE" }),
   revokeImportBatch: (batchId: string, idempotencyKey: string) => request<FinanceImportBatch>(`/api/finance/import-batches/${batchId}/revoke`, { method: "POST", headers: { "idempotency-key": idempotencyKey } }),
 };

@@ -973,4 +973,78 @@ describe("PostgreSQL finance vertical slice", () => {
     const audit = await db.query<{ count: number }>("SELECT COUNT(*)::int AS count FROM audit_log WHERE household_id = $1 AND action LIKE 'ai_%'", [householdA]);
     expect(audit.rows[0].count).toBe(2);
   });
+
+  it("lists raw import retention and lets the owner delete only the original file", async () => {
+    const batchId = "85000000-0000-0000-0000-0000000000d1";
+    const futureBatch = "85000000-0000-0000-0000-0000000000d2";
+    const sourceRecordId = "91000000-0000-0000-0000-0000000000d1";
+    await db.query("RESET ROLE");
+    await db.query(
+      "INSERT INTO import_batch (id, household_id, source_id, file_name, file_sha256, object_key, status, raw_retention_until, created_by, file_size, header_preview) VALUES ($1, $2, $3, $4, $5, $6, 'committed', now() + interval '10 days', $7, $8, $9::jsonb)",
+      [batchId, householdA, "30000000-0000-0000-0000-0000000000a1", "bank-near.xlsx", "near-hash", importObjectKey(householdA, batchId), userA, 12, '{"sheets":[{"sheet_name":"Sheet1"}]}'],
+    );
+    await db.query(
+      "INSERT INTO import_batch (id, household_id, source_id, file_name, file_sha256, object_key, status, raw_retention_until, created_by, file_size) VALUES ($1, $2, $3, $4, $5, $6, 'committed', now() + interval '40 days', $7, $8)",
+      [futureBatch, householdA, "30000000-0000-0000-0000-0000000000a1", "bank-far.xlsx", "far-hash", importObjectKey(householdA, futureBatch), userA, 12],
+    );
+    await db.query(
+      "INSERT INTO source_record (id, household_id, source_id, import_batch_id, external_id, source_fingerprint, occurred_at, direction, amount, currency, merchant, channel, raw_object_key) VALUES ($1, $2, $3, $4, $5, $6, now(), 'expense', '50.0000', 'CNY', '家庭餐饮', 'bank', $7)",
+      [sourceRecordId, householdA, "30000000-0000-0000-0000-0000000000a1", batchId, "bank-near-1", "bank-near-fingerprint", importObjectKey(householdA, batchId)],
+    );
+    await db.query("SET ROLE life_app");
+
+    const reminders = await repository.listRawImportRetention(30, 50);
+    expect(reminders.map((item) => item.id)).toEqual([batchId]);
+    expect(reminders[0].raw_retention_until).toBeTruthy();
+    expect(reminders[0].days_until_expiry).toBeGreaterThan(8);
+    expect(reminders[0].days_until_expiry).toBeLessThanOrEqual(11);
+    const retentionRoute = await app.inject({ method: "GET", url: "/api/finance/import-retention?notice_days=30&limit=50" });
+    expect(retentionRoute.statusCode).toBe(200);
+    expect(retentionRoute.json().items.map((item: { id: string }) => item.id)).toEqual([batchId]);
+
+    await importStore.put(importObjectKey(householdA, batchId), Buffer.from("owner-raw"));
+    await db.query("RESET ROLE");
+    const ledgerBefore = await db.query<{ count: number }>("SELECT COUNT(*)::int AS count FROM ledger_transaction WHERE household_id = $1", [householdA]);
+    await db.query("SET ROLE life_app");
+    const deleteRoute = await app.inject({ method: "DELETE", url: `/api/finance/import-batches/${batchId}/raw` });
+    expect(deleteRoute.statusCode).toBe(200);
+    const deleted = deleteRoute.json();
+    expect(deleted.raw_delete_status).toBe("deleted");
+    expect(deleted.raw_deleted_at).toBeTruthy();
+    expect(deleted.header_preview).toEqual({ sheets: [] });
+    expect(importStore.objects.has(importObjectKey(householdA, batchId))).toBe(false);
+    expect(importStore.objects.has(importObjectKey(householdA, futureBatch))).toBe(false);
+
+    await db.query("RESET ROLE");
+    const afterSource = await db.query<{ raw_object_key: string | null; count: number }>(
+      "SELECT raw_object_key, (SELECT COUNT(*)::int FROM source_record WHERE household_id = $1 AND import_batch_id = $2) AS count FROM source_record WHERE household_id = $1 AND id = $3",
+      [householdA, batchId, sourceRecordId],
+    );
+    expect(afterSource.rows[0].raw_object_key).toBeNull();
+    expect(afterSource.rows[0].count).toBe(1);
+    const afterLedger = await db.query<{ count: number }>("SELECT COUNT(*)::int AS count FROM ledger_transaction WHERE household_id = $1", [householdA]);
+    expect(afterLedger.rows[0].count).toBe(ledgerBefore.rows[0].count);
+    const audit = await db.query<{ action: string }>("SELECT action FROM audit_log WHERE household_id = $1 AND resource_id = $2", [householdA, batchId]);
+    expect(audit.rows.map((row) => row.action)).toEqual(expect.arrayContaining(["finance_import_raw_owner_delete_started", "finance_import_raw_owner_deleted"]));
+    await db.query("SET ROLE life_app");
+
+    const again = await repository.deleteRawImportFile(batchId);
+    expect(again.raw_delete_status).toBe("deleted");
+
+    await db.query("RESET ROLE");
+    await db.query("INSERT INTO app_user (id, email, password_hash) VALUES ($1, $2, 'disabled-for-owner-check')", [userC, "raw-owner-child@example.invalid"]);
+    await db.query("INSERT INTO household_member (id, household_id, user_id, role) VALUES ($1, $2, $3, 'adult')", [memberC, householdA, userC]);
+    await db.query("SET ROLE life_app");
+    const memberRepository = new SqlFinanceRepository(pool, { householdId: householdA, userId: userC }, importStore);
+    await expect(memberRepository.deleteRawImportFile(batchId)).rejects.toMatchObject({ code: "FINANCE_OWNER_REQUIRED" });
+    const memberApp = buildServer({ resolveScope: () => ({ householdId: householdA, userId: userC }), financeFactory: () => memberRepository });
+    const memberRetention = await memberApp.inject({ method: "GET", url: "/api/finance/import-retention?notice_days=30" });
+    expect(memberRetention.statusCode).toBe(403);
+    expect(memberRetention.json().code).toBe("FINANCE_OWNER_REQUIRED");
+
+    const memberDenied = await memberApp.inject({ method: "DELETE", url: `/api/finance/import-batches/${batchId}/raw` });
+    expect(memberDenied.statusCode).toBe(403);
+    expect(memberDenied.json().code).toBe("FINANCE_OWNER_REQUIRED");
+    await memberApp.close();
+  });
 });
