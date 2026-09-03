@@ -120,6 +120,20 @@ npm run staging:auth-e2e
 
 脚本将真实创建一个带 `B011-` 标记的 staging 家庭，验证 HTTP→HTTPS、HSTS、注册、第二会话、`/api/me`、Secure/HttpOnly/SameSite Cookie、真实重置邮件、旧会话撤销、旧密码失效、新密码登录、财务会话和退出。报告不会写入密码或重置链接；测试数据不允许指向 production。
 
+### 5.4 I-010 结构化请求日志与检索
+
+API 对每个请求回报 `x-request-id`，错误响应同时返回相同 `trace_id`。日志只输出结构化 JSON，不记录请求体、Cookie、令牌、查询参数或账单内容；IP、用户、家庭和邮箱只保留带 `LIFE_LOG_SALT` 的 SHA-256 摘要，User-Agent 截断到 200 字符。生产/ staging 使用 journald 收集 API 日志，默认关闭 Fastify 自带的原始请求行，避免重复记录原始 IP 和查询串。
+
+在目标服务器按 trace id 检索：
+
+```bash
+export LIFE_LOG_SERVICE=life-staging.service
+export LIFE_LOG_SINCE='30 minutes ago'
+npm run ops:request-log -- <trace-id>
+```
+
+`LIFE_LOG_SALT` 必须在 `/etc/life/staging.env`（及 production 环境）保持稳定，不得写入 Git。仓库侧只验证结构、哈希和响应头；真实 journald 检索必须由目标服务器验收。
+
 ## 6. I-012 加密 PostgreSQL 备份
 
 仓库已提供 `scripts/postgres_backup.sh`、`deploy/life-staging-postgres-backup.service.example`、`deploy/life-staging-postgres-backup.timer.example` 和 `deploy/staging-backup.env.example`。它们尚未部署到服务器，不应因为文件存在而将 I-012 标记为完成。

@@ -28,6 +28,7 @@
     "staging:anomaly-contract": "node scripts/staging_anomaly_drill_contract_test.mjs",
     "release:rollback-contract": "node scripts/release_rollback_drill_contract.mjs",
     "web:dev": "vite --config ui/app/vite.config.ts",
+    "ops:request-log": "node scripts/request_log_query.mjs",
     "web:build": "vite build --config ui/app/vite.config.ts",
     "web:typecheck": "tsc -p ui/app/tsconfig.json --noEmit",
     "web:food-smoke": "node scripts/food_vertical_slice_smoke.mjs",
