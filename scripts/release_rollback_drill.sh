@@ -49,8 +49,8 @@ git show-ref --verify --quiet "refs/tags/$current_tag" || die "当前 Tag 不存
 git show-ref --verify --quiet "refs/tags/$previous_tag" || die "上一 Tag 不存在：$previous_tag"
 git merge-base --is-ancestor "$previous_tag" "$current_tag" || die '上一 Tag 必须是当前 Tag 的祖先'
 
-current_commit="$(git rev-parse "$current_tag")"
-previous_commit="$(git rev-parse "$previous_tag")"
+current_commit="$(git rev-parse "$current_tag^{commit}")"
+previous_commit="$(git rev-parse "$previous_tag^{commit}")"
 current_migration="$(PGCONNECT_TIMEOUT=15 psql "$database_url" -X -v ON_ERROR_STOP=1 -Atqc \
   "SELECT filename FROM life_schema_migration ORDER BY applied_at DESC, filename DESC LIMIT 1" || true)"
 plan_id="life-rollback-$(date -u +%Y%m%dT%H%M%SZ)"
