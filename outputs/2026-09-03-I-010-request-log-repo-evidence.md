@@ -48,5 +48,15 @@ git diff --check
 ## 4. 当前边界
 
 - 仓库侧已具备结构化日志、错误码和检索入口。
-- 真实 staging journald 检索、`LIFE_LOG_SALT` 稳定性和服务重启验收尚未执行。
+- 已通过 PR #30 修复 journald `MESSAGE` 内嵌 JSON 的检索问题。
+- 已部署 `v0.1.0-rc.7` 到 staging，服务重启后 journald 检索复验通过。
 - 日志聚合告警仍归 I-011，当前 I-010 只记录为 `PARTIAL / REPO_READY`。
+
+## 5. staging live 复验（2026-09-03）
+
+- 发布点：`v0.1.0-rc.7`，提交 `fa2601952e299c09d84e1786a003929fa99b5c3c`。
+- 服务：`life-staging.service` active，运行目录 `/srv/life/releases/v0.1.0-rc.7`。
+- `https://life.wbutterfly.cn/healthz`：HTTP/2 200，响应含 `x-request-id`。
+- `staging:auth-preflight`：`ok=true`，PostgreSQL 16.15，HTTPS/Secure Cookie 均通过。
+- 真实 journald 检索：按 `x-request-id` 查询返回 `api request completed`，字段包含 trace id、method、route、status code、duration、脱敏 IP hash 和 msg。
+- `LIFE_LOG_SALT` 已写入服务器私有环境，未进入 Git。
