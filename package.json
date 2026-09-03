@@ -24,6 +24,8 @@
     "postgres:backup-contract": "node scripts/postgres_backup_contract_test.mjs",
     "postgres:restore-contract": "node scripts/postgres_restore_contract_test.mjs",
     "staging:load-contract": "node scripts/staging_load_test_contract.mjs",
+    "staging:anomaly-drill": "node scripts/staging_anomaly_drill.mjs",
+    "staging:anomaly-contract": "node scripts/staging_anomaly_drill_contract_test.mjs",
     "release:rollback-contract": "node scripts/release_rollback_drill_contract.mjs",
     "web:dev": "vite --config ui/app/vite.config.ts",
     "web:build": "vite build --config ui/app/vite.config.ts",
