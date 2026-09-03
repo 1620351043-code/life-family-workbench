@@ -387,9 +387,9 @@ npm run production:preflight
 | I-004 | 腾讯云 COS 私有桶 | `BLOCKED` | 最小权限凭据、私有 ACL、加密、生命周期和签名下载 |
 | I-005 | 反向代理配置 | `PARTIAL` | Caddy 已配置静态 SPA、API 与安全头；上传限制、超时和证书续期阈值待专项验收 |
 | I-006 | API 生产进程 | `DONE / STAGING` | `life-staging.service` 由 systemd 守护，rc.3 已在 127.0.0.1:3100 live 运行；生产环境待正式 Tag 后复验 |
-| I-007 | 解析 worker | `NOT_STARTED` | 独立进程、队列、重试和失败告警 |
-| I-008 | 导出 worker | `PARTIAL` | 代码存在；生产守护和告警未验证 |
-| I-009 | 保留期清理 worker | `PARTIAL` | 代码存在；生产定时、失败告警和重跑未验证 |
+| I-007 | 解析 worker | `DONE / STAGING` | 独立进程、队列、重试和失败告警；staging systemd timer 每分钟触发，合成微信 CSV 真实解析成功，`finance_import_job` succeeded、批次 header_detected、2 行 import_row/source_record；证据 `outputs/2026-09-03-finance-worker-staging-evidence.md` |
+| I-008 | 导出 worker | `DONE / STAGING` | 独立进程、定时任务、导出文件和过期清理；staging systemd timer 每 5 分钟触发，真实导出 job 到 ready、生成 CSV，过期后 retention 删除；生产守护和告警仍待 I-011/I-016 |
+| I-009 | 保留期清理 worker | `DONE / STAGING` | 每日定时清理过期的原始账单、导出文件与 AI 记忆；staging 真实验证 1 个过期原始账单/1 个导出/1 个 AI 记忆均删除，未到期原始文件与正式源记录保留；生产告警仍待 I-011/I-016 |
 | I-010 | 请求日志和错误聚合 | `NOT_STARTED` | trace ID、稳定错误码、隐私脱敏和检索能力完整 |
 | I-011 | 指标和告警 | `NOT_STARTED` | API、数据库、队列、COS、AI、磁盘和证书告警 |
 | I-012 | PostgreSQL 备份 | `LOCAL_DONE / REMOTE_DEFERRED` | 本地加密备份、SHA-256、AES-256 GPG 解密、解包白名单与 `pg_restore --list` 已在服务器真实通过；rclone/COS 按既定范围跳过，`remote-verified=SKIPPED_LOCAL_DRILL` |
@@ -658,3 +658,4 @@ npm run production:preflight
 | v0.26 | 2026-09-02 | 完成 G-013/G-014 原始账单到期提醒与所有者主动删除：新增提醒查询、删除状态机、对象存储删除、来源记录清键、正式账本保留与审计；数据权利页新增提醒与二次确认流程；30 项测试、migration smoke、OpenAPI 68 paths/91 schemas、前端构建和远端 quality-gate 通过，PR #15 已合并 | G-013、G-014 更新为 `DONE`；真实对象存储与正式身份视觉仍归 E-116/E-118 闸门 |
 | v0.27 | 2026-09-02 | 完成 G-006 严格同源校验与 G-007 安全头加固：API 对 `/api/*` 不安全方法校验 Origin/Referer，跨域返回 403；`onSend` 与 Caddy 模板统一添加 X-Frame-Options、X-Content-Type-Options、Referrer-Policy、Permissions-Policy、CSP，staging/production 另加 HSTS；B-011 契约新增安全头断言；41 项测试、staging contract、OpenAPI、前端构建和远端 quality-gate 通过，PR #17 已合并 | G-006 更新为 `DONE`；G-007 更新为 `PARTIAL / REPO_READY`，待 staging 部署后 live 复核 |
 | v0.28 | 2026-09-03 | 完成生产发布第一轮真实部署：修复迁移清单漏登记 0015，PR #21 合并并建立 v0.1.0-rc.3；服务器构建 rc.1/rc.2/rc.3 三个不可变发布点，真实数据库执行 0015；切换到 rc.3 后 live 验证 healthz/静态首页/B-011 preflight；发现并修复服务器 Caddy 缺少 X-Frame-Options 与 CSP 收紧项，live 安全头全部通过；随后真实回滚到 rc.2 再恢复 rc.3；补做 rc.3 回滚 dry-run | I-003 `DONE`（15 migrations/32 FORCE RLS）、I-005/006 staging 证据补全、I-012 `LOCAL_DONE / REMOTE_DEFERRED`、I-013 `DONE`、I-014 `BASELINE_DONE`、I-015 `DONE / STAGING`、G-007 `DONE / STAGING_LIVE`；B-011 仍待 SES 邮件 |
+| v0.29 | 2026-09-03 | 完成财务 worker staging 真实调度验收：PR #23/#24 合并、rc.4/rc.5 发布；install python3-pandas/openpyxl 并修正 staging-imports 生命周期权限后，import/export/retention 三个 systemd timer 在真实 PostgreSQL + 本地对象存储上跑通；import 合成微信 CSV 解析成功，export 生成 CSV，retention 删除过期原始账单/导出/AI 记忆并保留未到期文件与正式账本数据 | I-007/I-008/I-009 更新为 `DONE / STAGING`；部署缺口（Python 依赖、对象存储权限）已记录并修复；COS、正式 `.xls` soffice 路径、生产告警仍待 I-004/I-011/I-016 |

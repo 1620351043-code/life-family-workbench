@@ -1,0 +1,14 @@
+# Run the export worker regularly. Export jobs are created by authenticated
+# users; this timer is the production scheduler instead of in-process execution.
+[Unit]
+Description=Run Life finance export worker every five minutes
+
+[Timer]
+OnCalendar=*-*-* *:00/5:00
+Persistent=true
+RandomizedDelaySec=30s
+AccuracySec=30s
+Unit=life-finance-export.service
+
+[Install]
+WantedBy=timers.target

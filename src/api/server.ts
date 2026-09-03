@@ -1017,7 +1017,9 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     passwordResetDelivery,
     importObjectStore,
     importParser,
-    exportRunner: pool ? ((scope, jobId) => runFinanceExportJob(pool as unknown as DbPool, scope, importObjectStore, jobId)) : undefined,
+    exportRunner: pool && !isSecureDeployment()
+      ? ((scope, jobId) => runFinanceExportJob(pool as unknown as DbPool, scope, importObjectStore, jobId))
+      : undefined,
   });
   await app.listen({ host: "127.0.0.1", port: Number(process.env.PORT ?? 3100) });
 }
