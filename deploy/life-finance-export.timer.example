@@ -4,7 +4,7 @@
 Description=Run Life finance export worker every five minutes
 
 [Timer]
-OnCalendar=*-*-* *:*/5:00
+OnCalendar=*-*-* *:00/5:00
 Persistent=true
 RandomizedDelaySec=30s
 AccuracySec=30s
