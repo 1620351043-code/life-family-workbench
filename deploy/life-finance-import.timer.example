@@ -1,0 +1,14 @@
+# Run the import parsing worker regularly. The service is one-shot, so it
+# reclaims stale leases and processes a bounded queue on each trigger.
+[Unit]
+Description=Run Life finance import parsing worker every minute
+
+[Timer]
+OnCalendar=*-*-* *:*:00
+Persistent=true
+RandomizedDelaySec=15s
+AccuracySec=30s
+Unit=life-finance-import.service
+
+[Install]
+WantedBy=timers.target
