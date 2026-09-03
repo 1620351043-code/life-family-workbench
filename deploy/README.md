@@ -195,6 +195,8 @@ sudo systemctl enable --now life-staging-postgres-backup.timer
 - 应用角色受 FORCE RLS 限制，不能查看全局队列，因此健康检查使用独立的 `LIFE_HEALTH_DATABASE_URL` 数据库连接，通常复用 root 私有的 migration/admin 连接；该连接不得进入应用服务或仓库。
 - 健康检查只输出聚合状态和检查项，不打印数据库连接串、COS 密钥、AI 密钥、账单内容、家庭标识或原始错误信息。
 - 非生产 staging 使用本地对象存储，不要求 COS 配置；生产环境缺少 COS 配置会直接判为 critical。
+- 监控数据库角色通常没有 `pg_read_all_settings`，因此健康检查允许通过 `LIFE_HEALTH_PG_DATA_DIR` 显式配置 PostgreSQL 数据目录；未配置时仅跳过该磁盘项，不会误判数据库结构失败。
+- staging systemd 服务对对象存储目录使用 `ReadWritePaths`，而不是只读挂载，确保“可读可写”检查与导出/导入 worker 的真实权限一致。
 - 未配置告警 Webhook 时，systemd 和 journald 保存失败记录；配置 Webhook 后，仅在健康状态非 ok 且 Webhook 为 HTTPS 时发送一次性聚合告警，默认不按每个失败项反复发送。
 
 服务器安装（`staging-health.env` 复制后必须把 `LIFE_HEALTH_DATABASE_URL` 替换为实际 monitoring/admin 连接）：
