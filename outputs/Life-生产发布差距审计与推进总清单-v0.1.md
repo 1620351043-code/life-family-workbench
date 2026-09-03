@@ -382,7 +382,7 @@ npm run production:preflight
 | ID | 工作项 | 状态 | 验收标准 |
 |---|---|---|---|
 | I-001 | 腾讯云服务器环境确认 | `PARTIAL` | 已验证 Ubuntu 24.04.4、API loopback、Caddy 与 PostgreSQL 服务；资源、磁盘、网络和防火墙基线记录待补 |
-| I-002 | 域名、HTTPS 和证书 | `PARTIAL` | `life.wbutterfly.cn` 已验证可信 HTTPS、HSTS、HTTP 跳转和 Cookie Secure；证书自动续期配置与到期阈值待记录 |
+| I-002 | 域名、HTTPS 和证书 | `DONE / STAGING_LIVE` | `life.wbutterfly.cn` A 记录指向 `139.199.70.242`；HTTP 308→HTTPS、HTTP/2 200、HSTS、CSP 等安全头、Cookie Secure 均通过；Caddy validate 有效并启用自动 TLS；API `/healthz` ok、未登录 `/api/me` 返回预期 401；健康检查每 5 分钟验证证书，剩余 84 天、警告 14 天、严重 7 天；证据见 `outputs/2026-09-03-I-002-domain-connectivity-evidence.md` |
 | I-003 | 原生 PostgreSQL | `DONE` | PostgreSQL 16.15、15 migrations、32 FORCE RLS、应用角色 `NOSUPERUSER/NOBYPASSRLS` 已在 staging live 验证 |
 | I-004 | 腾讯云 COS 私有桶 | `BLOCKED` | 最小权限凭据、私有 ACL、加密、生命周期和签名下载 |
 | I-005 | 反向代理配置 | `PARTIAL` | Caddy 已配置静态 SPA、API 与安全头；上传限制、超时和证书续期阈值待专项验收 |
@@ -666,3 +666,4 @@ npm run production:preflight
 | v0.34 | 2026-09-03 | 在 staging rc.9 重跑 `staging:auth-preflight`：life_app、PostgreSQL 16.15、6 张核心表、4 个安全函数、HTTPS/安全 Cookie 全部通过 | I-016 更新为 `PARTIAL / PREFLIGHT_OK`；真实邮件交付、COS/异地备份与完整发布路径仍归 B-011/I-012/I-004 |
 | v0.35 | 2026-09-03 | 复核 I-012 远端授权阻塞：确认 `LifeCOSBackupOnly`（ID 285059614）版本 2 已用正确 `uid/1413659045` 资源段但尚未设为当前版本、未关联 `life-butterfly`；执行环境网络/SSH 仍被禁，未修改线上权限、未执行上传；`postgres:backup-contract` 17 项本地契约全部通过 | I-012 保持 `LOCAL_DONE / REMOTE_BLOCKED`；新增人工/恢复授权后三步收口清单，详见 `outputs/2026-09-03-I-012-backup-prep-evidence.md` |
 | v0.36 | 2026-09-03 | 完成 I-012 staging 真实验收：CAM `LifeCOSBackupOnly` 版本 2 设为当前版本并关联 `life-butterfly`，rclone `life-cos` 对专用前缀无 403；真实加密备份 20,956,168 bytes 经本地 SHA-256、远端对象、`rclone copy/check --checksum` 与 `remote-verified.txt` 验证；修复 service 发布路径和 `ProtectHome` rclone 配置路径；启用每日 03:20 timer；轮换子账号密钥并删除旧凭证；契约检查扩展至 20 项 | I-012 更新为 `DONE / STAGING_VERIFIED`；I-016 的完整邮件交付、业务对象存储与生产全路径仍归 B-011/I-004 |
+| v0.37 | 2026-09-03 | 完成 I-002 staging 域名与 HTTPS 初步上线收口：`life.wbutterfly.cn` A 记录指向 `139.199.70.242`，HTTP→HTTPS、HTTP/2、HSTS 与全套安全头 live 通过；Caddy 配置 validate 有效并启用自动 TLS；API `/healthz` ok、未登录 `/api/me` 符合预期；健康检查证书 84 天、警告 14 天、严重 7 天，timer 每 5 分钟运行；证据见 `outputs/2026-09-03-I-002-domain-connectivity-evidence.md` | I-002 更新为 `DONE / STAGING_LIVE`；生产稳定 Tag、I-004 业务 COS、B-011 邮件与生产全路径仍未关闭 |

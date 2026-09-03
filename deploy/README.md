@@ -66,7 +66,7 @@ sudo ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
 
 ### 5.2 staging 配置
 
-1. 为 staging 域名设置 DNS，并让 Caddy 自动取得可信证书；参考 `deploy/life-staging.Caddyfile.example`。
+1. 为 staging 域名设置 DNS，并让 Caddy 自动取得可信证书；参考 `deploy/life-staging.Caddyfile.example`。当前初步上线域名已配置为 `life.wbutterfly.cn`，A 记录指向 `139.199.70.242`；DNS、HTTPS、HSTS、安全头、API 与证书监控证据见 `outputs/2026-09-03-I-002-domain-connectivity-evidence.md`。
 2. 创建独立的 `life_staging` 数据库、迁移角色和 `life_app` 应用角色；应用角色必须是 `NOSUPERUSER NOBYPASSRLS`。迁移角色拥有数据库结构，本项目的认证 `SECURITY DEFINER` 函数也由它持有，因此必须显式具备 `BYPASSRLS`，否则真实 PostgreSQL 会在 `FORCE RLS` 表上拒绝注册；该高权限连接只允许 root 在迁移和 preflight 时读取，严禁注入应用服务。
 3. 使用迁移角色运行全部迁移，再将 `deploy/staging.env.example` 复制到 `/etc/life/staging.env`，替换占位符并设置权限 `0600`。
 4. 使用 `deploy/life-staging.service.example` 启动 API。API 仅监听 `127.0.0.1:3100`，外部流量全部经过 Caddy HTTPS。
