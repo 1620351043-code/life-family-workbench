@@ -396,7 +396,7 @@ npm run production:preflight
 | I-013 | 恢复演练 | `DONE` | 已从真实加密归档恢复至 `life_restore_20260903_0206`，6 张核心表源/目标计数、账本金额、家庭与成员数量一致；恢复时 31 张 FORCE RLS，当前库在 0015 后为 32 张 |
 | I-014 | 容量和压力测试 | `DONE` | 服务器本地 PostgreSQL + staging HTTPS 完整演练通过：隔离 3 家庭/3 并发/6 次跨租户 404；超大账单 12,583,217 字节、37,294 行解析成功、超限 400；导出队列 10 条 API 探测 + 60 条 DB 种子、worker 扫描/处理 50，抽样任务均 ready；AI 连接失败 503 后核心页健康、禁用后确定性 AI 可用；30,000 行慢查询种子 1,890ms、EXPLAIN 32ms、API 总览 1,672ms。详见 `outputs/2026-09-03-I-014-anomaly-staging-evidence-final.md` |
 | I-015 | 发布和回滚演练 | `DONE / STAGING` | rc.3 发布、dry-run 计划、真实回滚至 rc.2、恢复 rc.3 后 healthz/页面/B-011 preflight 均通过；production 稳定 Tag 仍待正式闸门 |
-| I-016 | Staging 全流程 | `NOT_STARTED` | 第 10 节发布路径完整通过并保留证据 |
+| I-016 | Staging 全流程 | `PARTIAL / PREFLIGHT_OK` | 当前 rc.9 `staging:auth-preflight` 真实验证通过：life_app、PostgreSQL 16.15、6 张核心表、4 个安全函数、HTTPS/安全 Cookie 均符合契约；完整邮件送达、COS/异地备份与第 10 节全路径仍受 B-011/I-012/I-004 阻塞，证据见 `outputs/2026-09-03-I-016-staging-preflight-evidence.md` |
 
 ---
 
@@ -663,3 +663,4 @@ npm run production:preflight
 | v0.31 | 2026-09-03 | 完成 I-010 staging live 验收：PR #30 修复 `scripts/request_log_query.mjs` 仅读取 journald 顶层字段导致检索为空的问题，合并提交 `fa26019`；发布 `v0.1.0-rc.7`，重启 `life-staging.service` 后通过 preflight、`/healthz` 与真实 journald trace 检索 | I-010 更新为 `DONE / STAGING_LIVE`；日志聚合告警仍归 I-011 |
 | v0.32 | 2026-09-03 | 完成 I-011 staging live 验收：PR #32/#33 已合并，发布 rc.8/rc.9；健康检查七项全 ok，timer 自动触发验证通过；首次运行发现并修复 20 个导出 EACCES 任务（`failed=0`，`ready` 130→150），并补齐 PG 数据目录与 `ReadWritePaths` 缺口 | I-011 更新为 `DONE / STAGING_LIVE`；告警 Webhook 未配置，生产告警仍归 I-008/I-016 |
 | v0.33 | 2026-09-03 | 完成 I-012 服务器侧远端备份基础设施准备：安装 rclone 1.60.1，安装 `life-staging-postgres-backup.service/.timer`，创建 `0600 root:root` 的 `staging-backup.env`，确认 GPG 口令文件 0600 与备份 GPG 目录 0700；timer 保持 disabled，未配置假 COS 远端 | I-012 更新为 `LOCAL_DONE / REMOTE_BLOCKED`；等待真实 COS bucket/region/最小权限凭据与专用前缀 |
+| v0.34 | 2026-09-03 | 在 staging rc.9 重跑 `staging:auth-preflight`：life_app、PostgreSQL 16.15、6 张核心表、4 个安全函数、HTTPS/安全 Cookie 全部通过 | I-016 更新为 `PARTIAL / PREFLIGHT_OK`；真实邮件交付、COS/异地备份与完整发布路径仍归 B-011/I-012/I-004 |
