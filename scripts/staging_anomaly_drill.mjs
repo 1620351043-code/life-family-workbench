@@ -245,7 +245,7 @@ async function runIsolationScenario(families) {
     await Promise.all([
       family.json("GET", "/api/finance/overview?start=2026-01-01&end=2026-01-31&granularity=day"),
       family.json("GET", `/api/finance/transactions?page=1&page_size=100`),
-      family.json("GET", `/api/finance/drilldowns/unknown-filter-id`).catch((error) => error instanceof HttpError && error.status === 404 ? null : Promise.reject(error)),
+      family.json("GET", `/api/finance/drilldowns/${globalThis.crypto.randomUUID()}`).catch((error) => error instanceof HttpError && error.status === 404 ? null : Promise.reject(error)),
     ]);
     return { index, latency_ms: Date.now() - started };
   }));
@@ -709,7 +709,7 @@ async function main() {
     skipped: [],
     completed_at: null,
   };
-  const families = [];
+  let families = [];
 
   try {
     families = await registerFamilies(baseUrl, householdCount, runNonce);
