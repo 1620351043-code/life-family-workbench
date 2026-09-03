@@ -1,6 +1,6 @@
-import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
+import Fastify, { LogController as FastifyLogController, type FastifyInstance, type FastifyRequest } from "fastify";
 import { Pool } from "pg";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { z } from "zod";
 import { DomainError } from "./domain-error.js";
@@ -16,6 +16,7 @@ import { createPasswordResetDeliveryFromEnv, type PasswordResetDelivery } from "
 import { sensitiveCapabilities } from "./sensitive-permissions.js";
 import { isProductionDeployment, isSecureDeployment } from "./deployment-environment.js";
 import { isSameOriginRequest } from "./same-origin.js";
+import { buildRequestLogEntry, type RequestLogEntry } from "./request-log.js";
 import { ImportSecurityError, MAX_IMPORT_FILE_BYTES, assertImportFileName, assertImportFileSize, validateImportFile } from "./finance-import-security.js";
 
 const sourceTypes = ["bank", "alipay", "wechat", "bookkeeping_app", "other"] as const;
@@ -79,7 +80,7 @@ const deletionCancelSchema = z.object({ expected_version: z.number().int().min(1
 export type FinanceRepositoryFactory = (scope: FinanceScope) => FinanceRepository;
 export type FamilyRepositoryFactory = (scope: FinanceScope) => FamilyRepository;
 export type ScopeResolver = (request: FastifyRequest) => FinanceScope | null | Promise<FinanceScope | null>;
-export type ServerOptions = { financeFactory?: FinanceRepositoryFactory; familyFactory?: FamilyRepositoryFactory; resolveScope?: ScopeResolver; authStore?: AuthStore; authAttemptLimiter?: AuthAttemptLimiter; passwordResetDelivery?: PasswordResetDelivery; importObjectStore?: ImportObjectStore; importParser?: FinanceImportParser; exportRunner?: (scope: FinanceScope, jobId: string) => Promise<void>; importRunner?: (scope: FinanceScope, batchId: string, jobId: string) => Promise<unknown> };
+export type ServerOptions = { financeFactory?: FinanceRepositoryFactory; familyFactory?: FamilyRepositoryFactory; resolveScope?: ScopeResolver; authStore?: AuthStore; authAttemptLimiter?: AuthAttemptLimiter; passwordResetDelivery?: PasswordResetDelivery; importObjectStore?: ImportObjectStore; importParser?: FinanceImportParser; exportRunner?: (scope: FinanceScope, jobId: string) => Promise<void>; importRunner?: (scope: FinanceScope, batchId: string, jobId: string) => Promise<unknown>; requestLogSink?: (entry: RequestLogEntry) => void };
 
 const requestScopes = new WeakMap<object, FinanceScope | null>();
 const requestSessions = new WeakMap<object, AuthSession>();
@@ -122,23 +123,23 @@ function requireScope(request: FastifyRequest, reply: { code(code: number): { se
   const resolved = requestScopes.has(request) ? requestScopes.get(request) ?? null : resolver(request);
   const scope = resolved && typeof (resolved as Promise<FinanceScope | null>).then === "function" ? null : resolved as FinanceScope | null;
   if (!scope) {
-    reply.code(401).send({ code: "UNAUTHORIZED", message: "需要有效的家庭会话" });
+    reply.code(401).send({ code: "UNAUTHORIZED", message: "需要有效的家庭会话", trace_id: request.id });
     return null;
   }
   return scope;
 }
 
-function requireFactory(reply: { code(code: number): { send(body: unknown): unknown } }, factory?: FinanceRepositoryFactory): FinanceRepository | null {
+function requireFactory(reply: { code(code: number): { send(body: unknown): unknown }; request: { id: string } }, factory?: FinanceRepositoryFactory): FinanceRepository | null {
   if (!factory) {
-    reply.code(503).send({ code: "FINANCE_DB_NOT_CONFIGURED", message: "财务数据库尚未配置" });
+    reply.code(503).send({ code: "FINANCE_DB_NOT_CONFIGURED", message: "财务数据库尚未配置", trace_id: reply.request.id });
     return null;
   }
   return factory as unknown as FinanceRepository;
 }
 
-function requireFamilyFactory(reply: { code(code: number): { send(body: unknown): unknown } }, factory?: FamilyRepositoryFactory): FamilyRepository | null {
+function requireFamilyFactory(reply: { code(code: number): { send(body: unknown): unknown }; request: { id: string } }, factory?: FamilyRepositoryFactory): FamilyRepository | null {
   if (!factory) {
-    reply.code(503).send({ code: "FAMILY_DB_NOT_CONFIGURED", message: "家庭空间数据库尚未配置" });
+    reply.code(503).send({ code: "FAMILY_DB_NOT_CONFIGURED", message: "家庭空间数据库尚未配置", trace_id: reply.request.id });
     return null;
   }
   return factory as unknown as FamilyRepository;
@@ -153,13 +154,21 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
   const importObjectStore: ImportObjectStore = options.importObjectStore ?? (isProductionDeployment() ? createProductionCosObjectStoreFromEnv() : new LocalImportObjectStore());
   if (isProductionDeployment() && !importObjectStore.production) throw new Error("生产环境必须使用腾讯云 COS 私有桶适配器，禁止回退到本地账单存储");
   const importParser = options.importParser ?? new LocalFinanceImportParser(importObjectStore);
+  const requestLogSink = options.requestLogSink;
+  const requestStartedAt = new WeakMap<object, number>();
   const app = Fastify({
     logger: isSecureDeployment(),
     bodyLimit: 50 * 1024 * 1024,
     trustProxy: isSecureDeployment() ? ["127.0.0.1", "::1"] : false,
+    genReqId: () => randomUUID(),
+    logController: new FastifyLogController({ disableRequestLogging: true }),
   });
   app.addContentTypeParser("application/octet-stream", { parseAs: "buffer" }, (_request, body, done) => done(null, body));
+  app.addHook("onRequest", async (request) => {
+    requestStartedAt.set(request, Date.now());
+  });
   app.addHook("onSend", async (_request, reply, payload) => {
+    reply.header("x-request-id", _request.id);
     reply.header("x-content-type-options", "nosniff");
     reply.header("x-frame-options", "DENY");
     reply.header("referrer-policy", "strict-origin-when-cross-origin");
@@ -186,12 +195,31 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     }
     requestScopes.set(request, await resolveScope(request));
   });
+  app.addHook("onResponse", async (request, reply) => {
+    const session = requestSessions.get(request);
+    const identity = session?.identity;
+    const entry = buildRequestLogEntry({
+      traceId: request.id,
+      method: request.method,
+      route: request.routeOptions?.url ?? request.url,
+      statusCode: reply.statusCode,
+      durationMs: Date.now() - (requestStartedAt.get(request) ?? Date.now()),
+      ip: request.ip,
+      userAgent: headerValue(request, "user-agent"),
+      userId: identity?.user.id ?? null,
+      householdId: identity?.household.id ?? null,
+      email: identity?.user.email ?? null,
+    });
+    requestLogSink?.(entry);
+    request.log.info(entry, "api request completed");
+  });
 
   app.setErrorHandler((error, request, reply) => {
     if (error instanceof ImportSecurityError) return reply.code(error.statusCode).send({ code: error.code, message: error.message, trace_id: request.id });
     if (error instanceof DomainError) return reply.code(error.statusCode).send({ code: error.code, message: error.message, trace_id: request.id });
     if (error instanceof z.ZodError) return reply.code(400).send({ code: "BAD_REQUEST", message: error.issues[0]?.message ?? "提交内容不符合要求", trace_id: request.id });
-    request.log.error(error);
+    const errorCode = error instanceof ImportSecurityError ? error.code : error instanceof DomainError ? error.code : error instanceof z.ZodError ? "BAD_REQUEST" : "INTERNAL_ERROR";
+    request.log.error({ trace_id: request.id, error_code: errorCode, error }, `api error ${errorCode}`);
     return reply.code(500).send({ code: "INTERNAL_ERROR", message: "服务暂时不可用", trace_id: request.id });
   });
 
@@ -342,7 +370,7 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     const scope = requireScope(request, reply, resolveScope);
     if (!scope) return;
     const session = requestSessions.get(request);
-    if (!session) return reply.code(503).send({ code: "IDENTITY_NOT_CONFIGURED", message: "当前服务未配置可返回身份详情的会话服务" });
+    if (!session) return reply.code(503).send({ code: "IDENTITY_NOT_CONFIGURED", message: "当前服务未配置可返回身份详情的会话服务", trace_id: request.id });
     return session.identity;
   });
 
