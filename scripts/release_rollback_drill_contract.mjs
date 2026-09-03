@@ -12,6 +12,8 @@ assert.match(drillScript, /LIFE_RELEASE_DRY_RUN/);
 assert.match(drillScript, /当前只能为 YES/);
 assert.match(drillScript, /refs\/tags/);
 assert.match(drillScript, /merge-base --is-ancestor/);
+assert.match(drillScript, /current_tag\^\{commit\}/);
+assert.match(drillScript, /previous_tag\^\{commit\}/);
 assert.match(drillScript, /worktree\/\$current_tag/);
 assert.match(drillScript, /worktree\/\$previous_tag/);
 assert.match(drillScript, /life_schema_migration/);
@@ -21,4 +23,4 @@ assert.doesNotMatch(drillScript, /rm -rf|rm -f/);
 assert.doesNotMatch(drillScript, /echo \$database_url/);
 assert.doesNotMatch(drillScript, /echo \$LIFE_RELEASE_DATABASE_URL/);
 
-console.log(JSON.stringify({ ok: true, checks: 13, contract: "I-015 release rollback dry-run plan" }));
+console.log(JSON.stringify({ ok: true, checks: 15, contract: "I-015 release rollback dry-run plan" }));
