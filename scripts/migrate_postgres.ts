@@ -21,6 +21,7 @@ const files = [
   "0012_household_invitations.sql",
   "0013_member_sensitive_permissions.sql",
   "0014_data_rights_deletion_requests.sql",
+  "0015_finance_import_jobs.sql",
 ];
 
 const pool = new Pool({ connectionString: databaseUrl, max: 1 });
