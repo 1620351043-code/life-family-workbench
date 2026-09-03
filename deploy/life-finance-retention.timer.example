@@ -1,0 +1,15 @@
+# Run the retention worker daily. The service is fail-closed: expired objects
+# are removed only after the batch/export/memory row proves the retention
+# window has passed, never by file age alone.
+[Unit]
+Description=Run Life finance retention worker daily
+
+[Timer]
+OnCalendar=*-*-* 04:30:00
+Persistent=true
+RandomizedDelaySec=15m
+AccuracySec=1m
+Unit=life-finance-retention.service
+
+[Install]
+WantedBy=timers.target
