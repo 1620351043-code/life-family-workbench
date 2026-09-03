@@ -1,42 +1,89 @@
-# I-012 远端备份基础设施准备证据（2026-09-03）
+# I-012 加密 PostgreSQL 备份与 COS 异地备份收口证据（2026-09-03）
 
-> 本文件记录已完成的服务器基础设施准备与真实阻塞边界；不包含数据库连接串、GPG 口令、COS 密钥或令牌。
+> 本文件记录 I-012 从基础设施准备到 staging 真实异地备份收口的全部证据；不包含数据库连接串、GPG 口令、COS SecretKey 或令牌。
+> 最终状态：`I-012 = DONE / STAGING_VERIFIED`。
 
-## 1. 现状
+## 1. 腾讯云 CAM 权限收口
 
-- 已在腾讯云 staging 服务器完成一次本地加密 PostgreSQL 备份：
-  - `/var/backups/life/staging/postgres/staging-postgres-20260903T020356Z-VM-0-12-ubuntu`
-  - 原清单记录：本地加密、SHA-256、AES-256 GPG 解密、解包白名单与 `pg_restore --list` 均通过。
-- 当前仍未配置任何 rclone 远端，服务器上没有 COS 凭据或 bucket/remote 配置，因此 `remote-verified.txt` 不存在。
-- 本轮不把“本地成功”冒充“异地备份成功”，I-012 保持 `LOCAL_DONE / REMOTE_BLOCKED`。
+- 策略名：`LifeCOSBackupOnly`
+- 策略 ID：`285059614`
+- 当前版本：版本 2（`2026-09-03 20:19:32`）
+- 资源范围：`qcs::cos:ap-guangzhou:uid/1413659045:butterfly-1413659045/life-backups/*`
+- 已关联子账号：`life-butterfly`（UIN `100052527194`），关联时间 `2026-09-03 22:13:55`
+- 子账号同时保留腾讯云预设的 `QcloudCollApiKeyManageAccess`。
+- 权限原则：仅允许写入专用备份前缀，不开放 bucket 根、其他前缀、读取私有业务对象或对象删除。
 
-## 2. 本轮服务器准备
+## 2. 服务器与 COS 真实连通
 
-- 安装 rclone：`rclone v1.60.1-DEV`（Ubuntu 24.04 仓库版本）。
-- 安装 systemd unit：
-  - `/etc/systemd/system/life-staging-postgres-backup.service`
-  - `/etc/systemd/system/life-staging-postgres-backup.timer`
-- 复制私有环境模板：
-  - `/etc/life/staging-backup.env`，权限 `0600 root:root`
-  - 明确使用 `LIFE_BACKUP_RCLONE_REMOTE=life-cos:life-backups/staging/postgres`，目标必须是专用 bucket/prefix。
-- 确认备份口令文件：
-  - `/etc/life/staging-backup.gpg-passphrase`，权限 `0600`
-  - 只用于 GPG 对称加密，未写入 Git、日志或归档。
-- 创建 GPG 目录：
-  - `/var/lib/life/staging-backup-gnupg`，`root:root 0700`
-- `systemctl daemon-reload` 完成；`life-staging-postgres-backup.timer` 当前保持 `disabled`。
-- 原因：远端未配置前启用 timer 会每天定时失败并污染告警，必须等 COS/rclone 真实可用后再启用。
+- 服务器：`VM-0-12-ubuntu`（`139.199.70.242`）
+- COS 桶：`butterfly-1413659045`
+- 区域：`ap-guangzhou`
+- rclone remote：`life-cos`
+- 目标前缀：`life-cos:butterfly-1413659045/life-backups/staging/postgres`
+- `rclone lsf` 对空前缀通过，无 403；证明最小权限 CAM 已真实生效。
 
-## 3. 阻塞与下一步
+## 3. staging 真实加密备份与远端校验
 
-- 需要真实腾讯云 COS 信息：
-  - 专用 bucket 名称与 region；
-  - 最小权限的 SecretId / SecretKey（或等价 CAM 临时凭据）；
-  - 确认 bucket 为私有 ACL，并只允许 `life-backups/staging/postgres/` 前缀。
-- 拿到凭据后执行：
-  1. 在服务器 root 私有配置中创建 `life-cos` rclone remote（不进入 Git）；
-  2. 先对空专用前缀执行一次 `rclone lsd/ls` 确认路径隔离；
-  3. 手动运行 `life-staging-postgres-backup.service`；
-  4. 校验加密归档、`.sha256` 与 `remote-verified.txt`；
-  5. 再启用 timer，并复查下一次自动运行。
-- 未获得上述凭据前，禁止使用本地目录、临时测试桶或假远端代替验收。
+备份 ID：`staging-postgres-20260903T142025Z-VM-0-12-ubuntu`
+
+- 本地归档目录：`/var/backups/life/staging/postgres/staging-postgres-20260903T142025Z-VM-0-12-ubuntu`
+- 加密归档大小：`20,956,168` bytes
+- 本地 `.gpg` 与 `.sha256`：通过 SHA-256 校验
+- 远端 `.gpg` 与 `.sha256`：均存在
+- `rclone copy --checksum`：通过
+- `rclone check --checksum`：通过（2 个对象匹配，0 differences）
+- `remote-verified.txt`：存在，`remote_verified_at=2026-09-03T14:20:28Z`
+
+该文件由备份脚本在 `rclone check` 成功后生成，不属于上传对象；后续远端一致性复核应使用 `--include "*.gpg" --include "*.sha256"`。
+
+## 4. 自动备份定时器
+
+- `life-staging-postgres-backup.service`：最近手动运行 `success`
+- `life-staging-postgres-backup.timer`：`enabled / active`
+- 下一次自动运行：`Fri 2026-09-04 03:23:37 CST`
+- 定时规则：每日 `03:20` 触发，`Persistent=true`，错过触发后补跑。
+
+## 5. 真实验收中修复的部署缺口
+
+本轮真实运行发现并修复以下问题，避免“本地契约通过但服务器无法运行”的假象：
+
+1. 服务单元 `ExecStart` 从错误的 `/srv/life/current/...` 修正为 `/srv/life/releases/current/scripts/postgres_backup.sh`。
+2. `ProtectHome=true` 会阻止 rclone 读取 `/root/.config/rclone/rclone.conf`；已将配置保存到 `/etc/life/rclone.conf`，并在服务单元中设置 `Environment=RCLONE_CONFIG=/etc/life/rclone.conf`。
+3. `/etc/life/rclone.conf` 与 `/root/.config/rclone/rclone.conf` 均为 `0600 root:root`。
+
+仓库侧已同步修正：
+
+- `deploy/life-staging-postgres-backup.service.example`
+- `deploy/staging-backup.env.example`
+- `deploy/README.md`
+- `scripts/postgres_backup_contract_test.mjs`（契约检查从 17 项扩展到 20 项，新增发布目录、rclone 配置路径和服务环境断言）
+
+本地契约测试结果：
+
+```text
+npm run postgres:backup-contract
+{"ok":true,"checks":20,"contract":"I-012 encrypted PostgreSQL backup"}
+```
+
+## 6. 密钥轮换
+
+- 旧子账号密钥 `AKID7IH4...` 已在腾讯云控制台禁用并永久删除，无法恢复。
+- 当前服务器 rclone 配置使用新子账号密钥，且新密钥是当前唯一启用凭证。
+- 新密钥已用于真实 COS 访问验证；未写入 Git、证据文档或日志。
+
+## 7. 复现清单（已完成）
+
+1. `LifeCOSBackupOnly` 版本 2 设为当前版本；
+2. 策略关联 `life-butterfly`；
+3. `rclone lsf` 对空前缀无 403；
+4. `systemctl start life-staging-postgres-backup.service` 成功；
+5. 本地 `.gpg`、`.sha256`、COS 对象和 `remote-verified.txt` 全部存在；
+6. `systemctl enable --now life-staging-postgres-backup.timer` 成功并复查下一次运行；
+7. 子账号密钥轮换：新密钥写入服务器并验证 COS 后，删除公开旧密钥。
+
+## 8. 剩余边界
+
+- I-012 本身已闭环；首次 timer 自动触发将在次日 `03:23`，当前以手动服务成功 + timer 注册作为验收，后续自动运行结果应纳入日常巡检。
+- I-013 真实恢复演练已完成。
+- 监控告警、生产环境自动告警仍归 I-008/I-011/I-016 闸门，不因 I-012 完成而关闭。
+- 腾讯云 COS 私有桶适配（业务对象存储）仍由 I-004 管理，与本次备份专用桶是不同工作项。

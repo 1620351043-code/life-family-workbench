@@ -26,9 +26,12 @@ assert.match(service, /EnvironmentFile=\/etc\/life\/staging-migration\.env/);
 assert.match(service, /EnvironmentFile=\/etc\/life\/staging-backup\.env/);
 assert.match(service, /UMask=0077/);
 assert.match(service, /ProtectSystem=strict/);
+assert.match(service, /ExecStart=\/srv\/life\/releases\/current\/scripts\/postgres_backup\.sh/);
+assert.match(service, /Environment=RCLONE_CONFIG=\/etc\/life\/rclone\.conf/);
 assert.match(timer, /OnCalendar=\*-\*-\* 03:20:00/);
 assert.match(timer, /Persistent=true/);
 assert.match(environment, /LIFE_BACKUP_LOCAL_RETENTION_DAYS=7/);
 assert.match(environment, /LIFE_BACKUP_REMOTE_RETENTION_DAYS=35/);
+assert.match(environment, /RCLONE_CONFIG=\/etc\/life\/rclone\.conf/);
 
-console.log(JSON.stringify({ ok: true, checks: 17, contract: "I-012 encrypted PostgreSQL backup" }));
+console.log(JSON.stringify({ ok: true, checks: 20, contract: "I-012 encrypted PostgreSQL backup" }));
