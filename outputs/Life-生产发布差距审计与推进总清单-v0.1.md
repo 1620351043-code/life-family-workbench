@@ -394,7 +394,7 @@ npm run production:preflight
 | I-011 | 指标和告警 | `NOT_STARTED` | API、数据库、队列、COS、AI、磁盘和证书告警 |
 | I-012 | PostgreSQL 备份 | `LOCAL_DONE / REMOTE_DEFERRED` | 本地加密备份、SHA-256、AES-256 GPG 解密、解包白名单与 `pg_restore --list` 已在服务器真实通过；rclone/COS 按既定范围跳过，`remote-verified=SKIPPED_LOCAL_DRILL` |
 | I-013 | 恢复演练 | `DONE` | 已从真实加密归档恢复至 `life_restore_20260903_0206`，6 张核心表源/目标计数、账本金额、家庭与成员数量一致；恢复时 31 张 FORCE RLS，当前库在 0015 后为 32 张 |
-| I-014 | 容量和压力测试 | `PARTIAL / STAGING_API_DONE_DB_PENDING` | 真实 HTTPS 异常演练已完成隔离（3 家庭/3 并发/6 次跨租户 404）、超大账单（12,583,217 字节，37,294 行解析成功，超限 400）、导出 API 队列探测（10 条 queued）和 AI 降级（连接失败 503 后核心页健康、禁用后确定性 AI 可用）；保留期/队列 DB worker 与慢查询仍待服务器数据库直连完成，详见 `outputs/2026-09-03-I-014-anomaly-staging-evidence.md` |
+| I-014 | 容量和压力测试 | `DONE` | 服务器本地 PostgreSQL + staging HTTPS 完整演练通过：隔离 3 家庭/3 并发/6 次跨租户 404；超大账单 12,583,217 字节、37,294 行解析成功、超限 400；导出队列 10 条 API 探测 + 60 条 DB 种子、worker 扫描/处理 50，抽样任务均 ready；AI 连接失败 503 后核心页健康、禁用后确定性 AI 可用；30,000 行慢查询种子 1,890ms、EXPLAIN 32ms、API 总览 1,672ms。详见 `outputs/2026-09-03-I-014-anomaly-staging-evidence-final.md` |
 | I-015 | 发布和回滚演练 | `DONE / STAGING` | rc.3 发布、dry-run 计划、真实回滚至 rc.2、恢复 rc.3 后 healthz/页面/B-011 preflight 均通过；production 稳定 Tag 仍待正式闸门 |
 | I-016 | Staging 全流程 | `NOT_STARTED` | 第 10 节发布路径完整通过并保留证据 |
 

@@ -748,4 +748,5 @@ async function main() {
   }
 }
 
+const execFileAsync = promisify(execFile);
 await main();
