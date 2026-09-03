@@ -1,4 +1,5 @@
 import fs from 'node:fs/promises';
+import { basename } from 'node:path';
 
 const modulePath = process.env.PGLITE_MODULE || '@electric-sql/pglite';
 const { PGlite } = await import(modulePath);
@@ -77,6 +78,12 @@ const migrationFiles = [
   'migrations/0014_data_rights_deletion_requests.sql',
   'migrations/0015_finance_import_jobs.sql',
 ];
+const migrateSource = await fs.readFile(new URL('../scripts/migrate_postgres.ts', import.meta.url), 'utf8');
+for (const file of migrationFiles) {
+  if (!migrateSource.includes(`"${basename(file)}"`)) {
+    throw new Error('migrate_postgres.ts 未包含迁移文件 ' + basename(file));
+  }
+}
 let statements = [];
 for (const file of migrationFiles) {
   let sql = await fs.readFile(new URL(file, import.meta.url), 'utf8');
