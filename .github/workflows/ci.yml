@@ -69,6 +69,9 @@ jobs:
       - name: Staging load test contract
         run: npm run staging:load-contract
 
+      - name: Staging anomaly drill contract
+        run: npm run staging:anomaly-contract
+
       - name: Release rollback drill contract
         run: npm run release:rollback-contract
 
