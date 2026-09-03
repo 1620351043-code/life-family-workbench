@@ -99,7 +99,7 @@ pg_restore --list "$raw_dump" >/dev/null
 
 {
   printf 'table\tcount\n'
-  for table_name in household app_user ledger_transaction source_record import_row finance_audit_log; do
+  for table_name in household app_user ledger_transaction source_record import_row audit_log; do
     table_count="$(PGCONNECT_TIMEOUT=15 psql "$database_url" -X -v ON_ERROR_STOP=1 -Atqc "SELECT count(*) FROM public.${table_name}")"
     [[ "$table_count" =~ ^[0-9]+$ ]] || die "无法获取表计数：$table_name"
     printf '%s\t%s\n' "$table_name" "$table_count"

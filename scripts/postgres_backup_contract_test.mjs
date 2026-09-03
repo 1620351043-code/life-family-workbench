@@ -11,6 +11,7 @@ const environment = await readFile(new URL("../deploy/staging-backup.env.example
 
 await execFileAsync("bash", ["-n", new URL("./postgres_backup.sh", import.meta.url).pathname]);
 assert.match(backupScript, /I_UNDERSTAND_THIS_CREATES_ENCRYPTED_POSTGRES_BACKUPS/);
+assert.match(backupScript, /audit_log/);
 assert.match(backupScript, /pg_dump --dbname=.*--format=custom/);
 assert.match(backupScript, /pg_restore --list/);
 assert.match(backupScript, /--symmetric --cipher-algo AES256/);
