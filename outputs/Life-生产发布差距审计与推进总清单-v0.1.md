@@ -212,7 +212,7 @@ npm run production:preflight
 
 | Gate | 闸门 | 当前状态 | 放行标准 |
 |---|---|---|---|
-| G0 | 版本与回滚基线 | `PARTIAL` | 首次提交、CI、版本号、Tag、回滚清单齐全；真实 staging 回滚点和演练仍待完成 |
+| G0 | 版本与回滚基线 | `PARTIAL / STAGING_READY` | 首次提交、CI、版本号、Tag、回滚清单齐全；staging 已真实发布与回滚，production 稳定 Tag 仍待正式闸门 |
 | G1 | 正式认证和家庭闭环 | `PARTIAL` | 移动端注册/登录/退出/重置/家庭/成员/邀请全部通过 |
 | G2 | 家庭租户隔离 | `PARTIAL` | 原生 PostgreSQL、真实会话、跨家庭和异步任务隔离通过 |
 | G3 | 家庭空间 P0 | `PARTIAL` | PRD 主题、状态、回复、筛选、AI 行动全部闭环 |
@@ -220,9 +220,9 @@ npm run production:preflight
 | G5 | 财务 P0 | `PARTIAL` | 正式身份移动端 E2E、异步解析、目标 PostgreSQL/COS 验收通过 |
 | G6 | 家庭 AI | `PARTIAL` | 独立连接、测试/轮换/禁用、授权、记忆和审计闭环 |
 | G7 | 安全与隐私 | `PARTIAL` | 限流、安全头、CSRF、文件安全、密码、越权和依赖审计通过 |
-| G8 | 运维与灾备 | `BLOCKED` | 监控、告警、备份、恢复、容量和回滚演练通过 |
+| G8 | 运维与灾备 | `PARTIAL / MONITORING_PENDING` | 本地加密备份、隔离恢复、基础压测与 staging 回滚已完成；监控告警、COS 异地备份和异常队列/超大账单仍未闭环 |
 | G9 | 移动端和 PWA | `PARTIAL` | 安装能力、真机、可访问性、离线边界和全部 P0 流程通过 |
-| G10 | Staging 发布演练 | `PARTIAL` | 腾讯云 staging 的 PostgreSQL、HTTPS、正式 Cookie、注册/登录/财务/退出已通过；真实邮件、完整发布清单和回滚演练待补 |
+| G10 | Staging 发布演练 | `PARTIAL / ROLLBACK_DONE` | 腾讯云 staging 的 PostgreSQL、HTTPS、正式 Cookie、注册/登录/财务/退出已通过；rc.3 发布与 rc.2 回滚已演练；真实邮件和完整 B-011 E2E 仍待 SES |
 
 ---
 
@@ -348,7 +348,7 @@ npm run production:preflight
 | G-004 | 登录和敏感接口限流 | `PARTIAL` | 登录、注册、密码重置、邀请码预览/接受已按标识和 IP 哈希键限流并返回 429/Retry-After；共享存储及上传、评论、导入、AI 分级限流待补 |
 | G-005 | 密码强度和泄漏口令策略 | `PARTIAL` | 注册与重置密码已强制 8–128 位且登录/重置申请不泄露账户存在性；泄漏口令库和完整策略待补 |
 | G-006 | CSRF 防护 | `DONE` | `/api/*` 的 POST/PUT/PATCH/DELETE 已按 Origin/Referer 与请求主机/`LIFE_PUBLIC_APP_URL` 严格同源校验；跨域与 `null` 来源返回 403，无来源非浏览器客户端不受影响 |
-| G-007 | 安全响应头 | `PARTIAL / REPO_READY` | API `onSend` 与 Caddy 模板已统一设置 X-Content-Type-Options、X-Frame-Options、Referrer-Policy、Permissions-Policy、CSP；staging/production 另加 HSTS；B-011 契约已新增断言，待部署到 staging 后 live 复核 |
+| G-007 | 安全响应头 | `DONE / STAGING_LIVE` | API `onSend` 与 Caddy 模板已统一设置 X-Content-Type-Options、X-Frame-Options、Referrer-Policy、Permissions-Policy、CSP；staging/production 另加 HSTS；`life.wbutterfly.cn` 静态首页与 `/healthz` 已 live 验证含全部头 |
 | G-008 | XSS 和富文本边界 | `PARTIAL` | React 默认转义；附件、AI 和未来富文本需专项测试 |
 | G-009 | 文件上传安全 | `DONE` | CSV/XLS/XLSX 首发范围闭环：扩展名/名称/大小/内容 magic、ZIP 结构和宏/外部链接/加密/路径/解压体积/临时文件/worker 超时均已覆盖；PDF/ZIP/OCR 导入仍归 E-113 |
 | G-010 | 重复提交和幂等 | `PARTIAL` | 财务关键写入已有；家庭、AI 和其它模块待全量检查 |
@@ -383,19 +383,19 @@ npm run production:preflight
 |---|---|---|---|
 | I-001 | 腾讯云服务器环境确认 | `PARTIAL` | 已验证 Ubuntu 24.04.4、API loopback、Caddy 与 PostgreSQL 服务；资源、磁盘、网络和防火墙基线记录待补 |
 | I-002 | 域名、HTTPS 和证书 | `PARTIAL` | `life.wbutterfly.cn` 已验证可信 HTTPS、HSTS、HTTP 跳转和 Cookie Secure；证书自动续期配置与到期阈值待记录 |
-| I-003 | 原生 PostgreSQL | `DONE` | PostgreSQL 16.15、14 migrations、31 FORCE RLS、应用角色 `NOSUPERUSER/NOBYPASSRLS` 已在 staging live 验证 |
+| I-003 | 原生 PostgreSQL | `DONE` | PostgreSQL 16.15、15 migrations、32 FORCE RLS、应用角色 `NOSUPERUSER/NOBYPASSRLS` 已在 staging live 验证 |
 | I-004 | 腾讯云 COS 私有桶 | `BLOCKED` | 最小权限凭据、私有 ACL、加密、生命周期和签名下载 |
-| I-005 | Nginx/反向代理配置 | `NOT_STARTED` | 静态前端、API、上传限制、超时和安全头完整 |
-| I-006 | API 生产进程 | `NOT_STARTED` | 不使用 `api:dev`；构建产物由 systemd 等守护 |
+| I-005 | 反向代理配置 | `PARTIAL` | Caddy 已配置静态 SPA、API 与安全头；上传限制、超时和证书续期阈值待专项验收 |
+| I-006 | API 生产进程 | `DONE / STAGING` | `life-staging.service` 由 systemd 守护，rc.3 已在 127.0.0.1:3100 live 运行；生产环境待正式 Tag 后复验 |
 | I-007 | 解析 worker | `NOT_STARTED` | 独立进程、队列、重试和失败告警 |
 | I-008 | 导出 worker | `PARTIAL` | 代码存在；生产守护和告警未验证 |
 | I-009 | 保留期清理 worker | `PARTIAL` | 代码存在；生产定时、失败告警和重跑未验证 |
 | I-010 | 请求日志和错误聚合 | `NOT_STARTED` | trace ID、稳定错误码、隐私脱敏和检索能力完整 |
 | I-011 | 指标和告警 | `NOT_STARTED` | API、数据库、队列、COS、AI、磁盘和证书告警 |
-| I-012 | PostgreSQL 备份 | `PARTIAL / REPO_READY` | 仓库侧已完成：fail-closed 加密备份脚本、systemd service/timer、环境示例、本地/远端 7/35 天保留、rclone 跨位置校验、17 项契约测试接入 npm/CI；真实部署仍待 SSH 扫码登录后配置私有口令/远端并完成首次备份 |
-| I-013 | 恢复演练 | `PARTIAL / REPO_READY` | 仓库侧已提供隔离恢复脚本与 18 项契约测试：仅允许 `life_restore*` 目标库、SHA-256/解密/解包白名单/目标库身份校验、默认拒绝覆盖、恢复后按核心表计数校验；真实演练仍待 I-012 首次备份后执行 |
-| I-014 | 容量和压力测试 | `PARTIAL / REPO_READY` | 仓库侧已提供 HTTPS/生产保护、并发/时长/P95 阈值、脱敏报告的负载测试驱动与 10 项契约测试；真实并发家庭、超大账单、队列堆积、AI 超时和慢查询仍待 staging live 留档 |
-| I-015 | 发布和回滚演练 | `PARTIAL / REPO_READY` | 仓库侧已提供 fail-closed dry-run 回滚计划脚本与 13 项契约测试：校验 Tag/祖先/发布目录/migration 并生成 0600 计划，不执行切换或删除；真实 staging 发布、回滚和再验收仍未完成 |
+| I-012 | PostgreSQL 备份 | `LOCAL_DONE / REMOTE_DEFERRED` | 本地加密备份、SHA-256、AES-256 GPG 解密、解包白名单与 `pg_restore --list` 已在服务器真实通过；rclone/COS 按既定范围跳过，`remote-verified=SKIPPED_LOCAL_DRILL` |
+| I-013 | 恢复演练 | `DONE` | 已从真实加密归档恢复至 `life_restore_20260903_0206`，6 张核心表源/目标计数、账本金额、家庭与成员数量一致；恢复时 31 张 FORCE RLS，当前库在 0015 后为 32 张 |
+| I-014 | 容量和压力测试 | `BASELINE_DONE` | 真实 HTTPS 压测 10s/8 并发共 6,079 请求，成功 3,040、401 3,039、0 服务端错误、0 网络错误，P50 6ms/P95 16ms/最大 290ms；并发家庭、超大账单、队列堆积、AI 超时和慢查询仍未覆盖 |
+| I-015 | 发布和回滚演练 | `DONE / STAGING` | rc.3 发布、dry-run 计划、真实回滚至 rc.2、恢复 rc.3 后 healthz/页面/B-011 preflight 均通过；production 稳定 Tag 仍待正式闸门 |
 | I-016 | Staging 全流程 | `NOT_STARTED` | 第 10 节发布路径完整通过并保留证据 |
 
 ---
@@ -443,7 +443,7 @@ npm run production:preflight
 - [ ] `E-119` COS live smoke
 - [ ] `E-120` 备份恢复和回滚
 - [x] `G-009` 文件上传安全（CSV/XLS/XLSX 首发范围；PDF/ZIP/OCR 归 E-113）
-- [ ] 关闭 `G-004`、`G-007`（G-007 待 staging 安全头 live 复核）
+- [ ] 关闭 `G-004`；`G-007` staging 安全头已 live 复核，production 待正式发布复验
 - [x] `G-006` 严格同源 CSRF 校验（仓库侧闭环）
 - [x] `G-013`、`G-014` 原始账单提醒与主动删除（仓库侧闭环）
 
@@ -584,7 +584,7 @@ npm run production:preflight
 
 下一轮默认从以下任务开始，除非用户明确调整优先级：
 
-1. `I-012`～`I-015`：建立备份、恢复、容量、发布和回滚演练证据（经用户授权，优先于待审核的 B-011 外部邮件配置）。
+1. `I-012` 远端备份与 `I-014` 异常场景：本地加密备份、隔离恢复、基础压测、staging 发布和回滚已完成；继续推进 COS/rclone 异地备份、并发家庭、超大账单、队列堆积、AI 超时和慢查询。
 2. `B-011`：待 `notify.wbutterfly.cn` 审核状态变化后，接入真实密码重置邮件 Endpoint 与专用测试邮箱读取接口，跑完已部署的目标 PostgreSQL + HTTPS 黑盒 E2E。
 3. `G-013`～`G-014`：仓库侧已闭环；仅剩真实对象存储与正式身份视觉，归 E-116/E-118 验收。
 
@@ -601,9 +601,9 @@ npm run production:preflight
 | 吃什么使用前端样本数据 | P0 | UI 明确标注来源样本 | 完成 D-005～D-012 |
 | 财务解析同步占用 HTTP | P0 | 120 秒开发代理超时 | 完成 E-114 |
 | 生产 COS 尚未验证 | P0 | 生产 fail-closed | 完成 E-119/I-004 |
-| 原生 PostgreSQL/RLS 未验证 | P0 | PGlite 兼容测试 | 完成 E-118/I-003 |
-| 限流和安全头未完整 | P0 | 登录、注册、密码重置、邀请码已有单进程限流；安全头已代码/契约闭环 | 完成共享限流、其他敏感接口分级限流；G-007 待 staging 部署后 live 复核 |
-| 缺少备份恢复和回滚演练 | P0 | 仅有说明文档 | 完成 I-012～I-015 |
+| 原生 PostgreSQL/RLS 基础验证完成 | 已关闭 | staging 原生库已验证 15 migrations/32 FORCE RLS；跨家庭并发和真机 E2E 仍待复验 | 完成跨家庭和真机复验 |
+| 限流和安全头未完整 | P0 | 登录、注册、密码重置、邀请码已有单进程限流；G-007 staging 安全头已 live 复核 | 完成共享限流、其他敏感接口分级限流；production 正式发布后复验 |
+| 备份恢复和回滚演练 | P1 | 本地加密备份、隔离恢复、基础压测和 staging 回滚已通过；COS 异地与异常场景未覆盖 | 完成 I-012 远端备份与 I-014 异常场景 |
 | 家庭 AI 管理和记忆 UI 缺失 | P0 | 财务连接契约部分存在 | 完成 F-004～F-009 |
 | PDF/ZIP/OCR 未实现 | P1 | 当前 CSV/XLS/XLSX 可用 | 产品确认首发范围或完成 E-113 |
 
@@ -620,7 +620,7 @@ npm run production:preflight
 - 2026-09-02 财务完整视觉回归已在真实登录会话下复验：23 个财务状态 × 430/390/320 共 69 张截图，全部可见、非空、无根级横向溢出且可见控件 ≥44×44pt；证据基于本地 PGlite，目标原生 PostgreSQL / 真机 / HTTPS 仍待部署闸门复验。
 - 财务视觉回归覆盖导入入口与历史批次；真实文件选择 → 表头预览 → 字段映射 → 关联审核 → 提交账本、导出与撤销完整流程已由 E-116 在本地 PGlite + 真实 Cookie 会话下闭环，目标原生 PostgreSQL / 真机 / HTTPS 仍由部署闸门复验。
 - 腾讯云 COS 私有桶适配已按此前要求跳过，本轮未执行真实 live smoke。
-- 没有在目标服务器执行备份、恢复、回滚、压力和故障演练。
+- 已在目标服务器完成本地加密备份、隔离恢复、基础 HTTPS 压测、staging 发布/回滚和 live 安全头复核；尚未完成 COS 异地备份、异常队列/超大账单/慢查询、监控告警与生产环境演练。
 - 吃什么浏览器烟测验证的是 UI 行为，不验证真实推荐、数据库和 HowToCook 发布包。
 - npm 漏洞审计只能覆盖已知依赖漏洞，不等于完成应用安全审计。
 
@@ -657,3 +657,4 @@ npm run production:preflight
 | v0.25 | 2026-09-02 | 完成 I-014/I-015 仓库侧准备：新增 HTTPS/生产保护的负载测试驱动、fail-closed 回滚 dry-run 计划脚本，以及 10/13 项契约测试并接入 npm/CI；不执行真实压测、发布切换或删除 | I-014、I-015 更新为 `PARTIAL / REPO_READY`；真实 staging 环境证据待服务器登录后执行
 | v0.26 | 2026-09-02 | 完成 G-013/G-014 原始账单到期提醒与所有者主动删除：新增提醒查询、删除状态机、对象存储删除、来源记录清键、正式账本保留与审计；数据权利页新增提醒与二次确认流程；30 项测试、migration smoke、OpenAPI 68 paths/91 schemas、前端构建和远端 quality-gate 通过，PR #15 已合并 | G-013、G-014 更新为 `DONE`；真实对象存储与正式身份视觉仍归 E-116/E-118 闸门 |
 | v0.27 | 2026-09-02 | 完成 G-006 严格同源校验与 G-007 安全头加固：API 对 `/api/*` 不安全方法校验 Origin/Referer，跨域返回 403；`onSend` 与 Caddy 模板统一添加 X-Frame-Options、X-Content-Type-Options、Referrer-Policy、Permissions-Policy、CSP，staging/production 另加 HSTS；B-011 契约新增安全头断言；41 项测试、staging contract、OpenAPI、前端构建和远端 quality-gate 通过，PR #17 已合并 | G-006 更新为 `DONE`；G-007 更新为 `PARTIAL / REPO_READY`，待 staging 部署后 live 复核 |
+| v0.28 | 2026-09-03 | 完成生产发布第一轮真实部署：修复迁移清单漏登记 0015，PR #21 合并并建立 v0.1.0-rc.3；服务器构建 rc.1/rc.2/rc.3 三个不可变发布点，真实数据库执行 0015；切换到 rc.3 后 live 验证 healthz/静态首页/B-011 preflight；发现并修复服务器 Caddy 缺少 X-Frame-Options 与 CSP 收紧项，live 安全头全部通过；随后真实回滚到 rc.2 再恢复 rc.3；补做 rc.3 回滚 dry-run | I-003 `DONE`（15 migrations/32 FORCE RLS）、I-005/006 staging 证据补全、I-012 `LOCAL_DONE / REMOTE_DEFERRED`、I-013 `DONE`、I-014 `BASELINE_DONE`、I-015 `DONE / STAGING`、G-007 `DONE / STAGING_LIVE`；B-011 仍待 SES 邮件 |
