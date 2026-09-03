@@ -193,7 +193,13 @@ async function checkDatabase(env: Record<string, string | undefined>, pool: Pool
           AND class.relforcerowsecurity`,
     );
     const migrationResult = await pool.query<{ migrations: number }>("SELECT count(*)::int AS migrations FROM life_schema_migration");
-    const dataDirectory = await pool.query<{ data_directory: string }>("SHOW data_directory");
+    let dataDirectory = env.LIFE_HEALTH_PG_DATA_DIR?.trim() ?? "";
+    try {
+      const dataDirectoryResult = await pool.query<{ data_directory: string }>("SHOW data_directory");
+      dataDirectory = String(dataDirectoryResult.rows[0]?.data_directory ?? "") || dataDirectory;
+    } catch {
+      // Monitoring role is intentionally not granted pg_read_all_settings; use LIFE_HEALTH_PG_DATA_DIR.
+    }
     const latencyMs = Date.now() - startedAt;
     const rlsTables = Number(rlsResult.rows[0]?.rls_tables ?? 0);
     const migrations = Number(migrationResult.rows[0]?.migrations ?? 0);
@@ -211,7 +217,7 @@ async function checkDatabase(env: Record<string, string | undefined>, pool: Pool
       rls_tables: rlsTables,
       server_version: role.server_version,
       latency_ms: latencyMs,
-      data_directory: String(dataDirectory.rows[0]?.data_directory ?? ""),
+      data_directory: dataDirectory || null,
     });
   } catch {
     return makeCheck("database", "critical", "DATABASE_UNREACHABLE", "数据库连接或关键查询失败", {
