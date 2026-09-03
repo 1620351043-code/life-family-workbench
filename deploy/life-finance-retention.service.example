@@ -1,0 +1,29 @@
+# Life finance retention worker. It removes only objects whose retention
+# window has expired and keeps formal ledger rows intact.
+# Production deployments should copy this to /etc/systemd/system/life-finance-retention.service
+# and point EnvironmentFile at the private environment for the target deployment.
+[Unit]
+Description=Life finance retention worker
+Wants=network-online.target
+After=network-online.target postgresql.service
+Requires=postgresql.service
+
+[Service]
+Type=oneshot
+User=life
+Group=life
+WorkingDirectory=/srv/life/releases/current
+EnvironmentFile=/etc/life/staging.env
+ExecStart=/usr/bin/npm run finance:retention-worker
+TimeoutStopSec=30
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/life/staging-imports
+UMask=0077
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
