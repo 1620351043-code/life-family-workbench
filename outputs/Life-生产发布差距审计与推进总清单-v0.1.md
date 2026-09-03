@@ -220,7 +220,7 @@ npm run production:preflight
 | G5 | 财务 P0 | `PARTIAL` | 正式身份移动端 E2E、异步解析、目标 PostgreSQL/COS 验收通过 |
 | G6 | 家庭 AI | `PARTIAL` | 独立连接、测试/轮换/禁用、授权、记忆和审计闭环 |
 | G7 | 安全与隐私 | `PARTIAL` | 限流、安全头、CSRF、文件安全、密码、越权和依赖审计通过 |
-| G8 | 运维与灾备 | `PARTIAL / MONITORING_PENDING` | 本地加密备份、隔离恢复、基础压测与 staging 回滚已完成；监控告警、COS 异地备份和异常队列/超大账单仍未闭环 |
+| G8 | 运维与灾备 | `PARTIAL / STAGING_WORK_DONE` | 本地加密备份、隔离恢复、基础压测、staging 回滚与 COS 异地备份已完成；监控告警、生产环境演练和异常队列/超大账单仍未闭环 |
 | G9 | 移动端和 PWA | `PARTIAL` | 安装能力、真机、可访问性、离线边界和全部 P0 流程通过 |
 | G10 | Staging 发布演练 | `PARTIAL / ROLLBACK_DONE` | 腾讯云 staging 的 PostgreSQL、HTTPS、正式 Cookie、注册/登录/财务/退出已通过；rc.3 发布与 rc.2 回滚已演练；真实邮件和完整 B-011 E2E 仍待 SES |
 
@@ -392,11 +392,11 @@ npm run production:preflight
 | I-009 | 保留期清理 worker | `DONE / STAGING` | 每日定时清理过期的原始账单、导出文件与 AI 记忆；staging 真实验证 1 个过期原始账单/1 个导出/1 个 AI 记忆均删除，未到期原始文件与正式源记录保留；生产告警仍待 I-011/I-016 |
 | I-010 | 请求日志和错误聚合 | `DONE / STAGING_LIVE` | 全部响应含 `x-request-id`/`trace_id`，错误响应稳定错误码；结构化日志不落请求体/Cookie/令牌/查询参数，IP、用户、家庭和邮箱哈希脱敏；PR #30 修复 journald 内嵌 JSON 检索；staging `v0.1.0-rc.7` 已重启并完成真实检索，证据见 `outputs/2026-09-03-I-010-request-log-repo-evidence.md` |
 | I-011 | 指标和告警 | `DONE / STAGING_LIVE` | staging `v0.1.0-rc.9` 健康检查七项全 ok，timer 自动触发验证通过；真实发现并修复 20 个导出 EACCES 任务；告警 Webhook 未配置，生产环境自动告警仍归 I-008/I-016 闸门，证据见 `outputs/2026-09-03-I-011-monitoring-staging-evidence.md` |
-| I-012 | PostgreSQL 备份 | `LOCAL_DONE / REMOTE_BLOCKED` | 本地加密备份、SHA-256、AES-256 GPG 解密、解包白名单与 `pg_restore --list` 已在服务器真实通过；rclone 1.60.1、备份 service/timer、私有 env 与 GPG 目录已准备，timer 保持 disabled；真实 COS bucket/凭据未提供，未伪造 `remote-verified.txt`，证据见 `outputs/2026-09-03-I-012-backup-prep-evidence.md` |
+| I-012 | PostgreSQL 备份 | `DONE / STAGING_VERIFIED` | CAM `LifeCOSBackupOnly` 版本 2 已生效并关联 `life-butterfly`；rclone 对专用前缀无 403；真实加密归档 20,956,168 bytes、本地与远端 SHA-256 双校验、`rclone check` 0 differences、`remote-verified.txt` 均通过；每日 03:20 timer 已启用并在次日 03:23 自动运行；真实运行修复 `ExecStart` 发布路径与 `ProtectHome` rclone 配置路径；旧子账号密钥已删除并换用新密钥，证据见 `outputs/2026-09-03-I-012-backup-prep-evidence.md` |
 | I-013 | 恢复演练 | `DONE` | 已从真实加密归档恢复至 `life_restore_20260903_0206`，6 张核心表源/目标计数、账本金额、家庭与成员数量一致；恢复时 31 张 FORCE RLS，当前库在 0015 后为 32 张 |
 | I-014 | 容量和压力测试 | `DONE` | 服务器本地 PostgreSQL + staging HTTPS 完整演练通过：隔离 3 家庭/3 并发/6 次跨租户 404；超大账单 12,583,217 字节、37,294 行解析成功、超限 400；导出队列 10 条 API 探测 + 60 条 DB 种子、worker 扫描/处理 50，抽样任务均 ready；AI 连接失败 503 后核心页健康、禁用后确定性 AI 可用；30,000 行慢查询种子 1,890ms、EXPLAIN 32ms、API 总览 1,672ms。详见 `outputs/2026-09-03-I-014-anomaly-staging-evidence-final.md` |
 | I-015 | 发布和回滚演练 | `DONE / STAGING` | rc.3 发布、dry-run 计划、真实回滚至 rc.2、恢复 rc.3 后 healthz/页面/B-011 preflight 均通过；production 稳定 Tag 仍待正式闸门 |
-| I-016 | Staging 全流程 | `PARTIAL / PREFLIGHT_OK` | 当前 rc.9 `staging:auth-preflight` 真实验证通过：life_app、PostgreSQL 16.15、6 张核心表、4 个安全函数、HTTPS/安全 Cookie 均符合契约；完整邮件送达、COS/异地备份与第 10 节全路径仍受 B-011/I-012/I-004 阻塞，证据见 `outputs/2026-09-03-I-016-staging-preflight-evidence.md` |
+| I-016 | Staging 全流程 | `PARTIAL / PREFLIGHT_OK` | 当前 rc.9 `staging:auth-preflight` 真实验证通过：life_app、PostgreSQL 16.15、6 张核心表、4 个安全函数、HTTPS/安全 Cookie 均符合契约；完整邮件送达、业务对象存储与第 10 节全路径仍受 B-011/I-004 阻塞，I-012 staging 异地备份已闭环，证据见 `outputs/2026-09-03-I-016-staging-preflight-evidence.md` |
 
 ---
 
@@ -584,7 +584,7 @@ npm run production:preflight
 
 下一轮默认从以下任务开始，除非用户明确调整优先级：
 
-1. `I-012` 远端备份与 `I-014` 异常场景：本地加密备份、隔离恢复、基础压测、staging 发布和回滚已完成；继续推进 COS/rclone 异地备份、并发家庭、超大账单、队列堆积、AI 超时和慢查询。
+1. `I-014` 异常场景与生产环境演练：本地加密备份、隔离恢复、基础压测、staging 发布/回滚和 COS 异地备份已完成；继续推进并发家庭、超大账单、队列堆积、AI 超时、慢查询和生产环境全路径复验。
 2. `B-011`：待 `notify.wbutterfly.cn` 审核状态变化后，接入真实密码重置邮件 Endpoint 与专用测试邮箱读取接口，跑完已部署的目标 PostgreSQL + HTTPS 黑盒 E2E。
 3. `G-013`～`G-014`：仓库侧已闭环；仅剩真实对象存储与正式身份视觉，归 E-116/E-118 验收。
 
@@ -603,7 +603,7 @@ npm run production:preflight
 | 生产 COS 尚未验证 | P0 | 生产 fail-closed | 完成 E-119/I-004 |
 | 原生 PostgreSQL/RLS 基础验证完成 | 已关闭 | staging 原生库已验证 15 migrations/32 FORCE RLS；跨家庭并发和真机 E2E 仍待复验 | 完成跨家庭和真机复验 |
 | 限流和安全头未完整 | P0 | 登录、注册、密码重置、邀请码已有单进程限流；G-007 staging 安全头已 live 复核 | 完成共享限流、其他敏感接口分级限流；production 正式发布后复验 |
-| 备份恢复和回滚演练 | P1 | 本地加密备份、隔离恢复、基础压测和 staging 回滚已通过；COS 异地与异常场景未覆盖 | 完成 I-012 远端备份与 I-014 异常场景 |
+| 备份恢复和回滚演练 | P1 | 本地加密备份、隔离恢复、基础压测、staging 回滚和 staging COS 异地备份已通过；生产环境异常场景未覆盖 | 完成 I-014 生产异常场景 |
 | 家庭 AI 管理和记忆 UI 缺失 | P0 | 财务连接契约部分存在 | 完成 F-004～F-009 |
 | PDF/ZIP/OCR 未实现 | P1 | 当前 CSV/XLS/XLSX 可用 | 产品确认首发范围或完成 E-113 |
 
@@ -620,7 +620,7 @@ npm run production:preflight
 - 2026-09-02 财务完整视觉回归已在真实登录会话下复验：23 个财务状态 × 430/390/320 共 69 张截图，全部可见、非空、无根级横向溢出且可见控件 ≥44×44pt；证据基于本地 PGlite，目标原生 PostgreSQL / 真机 / HTTPS 仍待部署闸门复验。
 - 财务视觉回归覆盖导入入口与历史批次；真实文件选择 → 表头预览 → 字段映射 → 关联审核 → 提交账本、导出与撤销完整流程已由 E-116 在本地 PGlite + 真实 Cookie 会话下闭环，目标原生 PostgreSQL / 真机 / HTTPS 仍由部署闸门复验。
 - 腾讯云 COS 私有桶适配已按此前要求跳过，本轮未执行真实 live smoke。
-- 已在目标服务器完成本地加密备份、隔离恢复、基础 HTTPS 压测、staging 发布/回滚和 live 安全头复核；尚未完成 COS 异地备份、异常队列/超大账单/慢查询、监控告警与生产环境演练。
+- 已在目标服务器完成本地加密备份、隔离恢复、基础 HTTPS 压测、staging 发布/回滚、live 安全头复核和 staging COS 异地备份；尚未完成异常队列/超大账单/慢查询、生产监控告警与生产环境全路径演练。
 - 吃什么浏览器烟测验证的是 UI 行为，不验证真实推荐、数据库和 HowToCook 发布包。
 - npm 漏洞审计只能覆盖已知依赖漏洞，不等于完成应用安全审计。
 
@@ -664,3 +664,5 @@ npm run production:preflight
 | v0.32 | 2026-09-03 | 完成 I-011 staging live 验收：PR #32/#33 已合并，发布 rc.8/rc.9；健康检查七项全 ok，timer 自动触发验证通过；首次运行发现并修复 20 个导出 EACCES 任务（`failed=0`，`ready` 130→150），并补齐 PG 数据目录与 `ReadWritePaths` 缺口 | I-011 更新为 `DONE / STAGING_LIVE`；告警 Webhook 未配置，生产告警仍归 I-008/I-016 |
 | v0.33 | 2026-09-03 | 完成 I-012 服务器侧远端备份基础设施准备：安装 rclone 1.60.1，安装 `life-staging-postgres-backup.service/.timer`，创建 `0600 root:root` 的 `staging-backup.env`，确认 GPG 口令文件 0600 与备份 GPG 目录 0700；timer 保持 disabled，未配置假 COS 远端 | I-012 更新为 `LOCAL_DONE / REMOTE_BLOCKED`；等待真实 COS bucket/region/最小权限凭据与专用前缀 |
 | v0.34 | 2026-09-03 | 在 staging rc.9 重跑 `staging:auth-preflight`：life_app、PostgreSQL 16.15、6 张核心表、4 个安全函数、HTTPS/安全 Cookie 全部通过 | I-016 更新为 `PARTIAL / PREFLIGHT_OK`；真实邮件交付、COS/异地备份与完整发布路径仍归 B-011/I-012/I-004 |
+| v0.35 | 2026-09-03 | 复核 I-012 远端授权阻塞：确认 `LifeCOSBackupOnly`（ID 285059614）版本 2 已用正确 `uid/1413659045` 资源段但尚未设为当前版本、未关联 `life-butterfly`；执行环境网络/SSH 仍被禁，未修改线上权限、未执行上传；`postgres:backup-contract` 17 项本地契约全部通过 | I-012 保持 `LOCAL_DONE / REMOTE_BLOCKED`；新增人工/恢复授权后三步收口清单，详见 `outputs/2026-09-03-I-012-backup-prep-evidence.md` |
+| v0.36 | 2026-09-03 | 完成 I-012 staging 真实验收：CAM `LifeCOSBackupOnly` 版本 2 设为当前版本并关联 `life-butterfly`，rclone `life-cos` 对专用前缀无 403；真实加密备份 20,956,168 bytes 经本地 SHA-256、远端对象、`rclone copy/check --checksum` 与 `remote-verified.txt` 验证；修复 service 发布路径和 `ProtectHome` rclone 配置路径；启用每日 03:20 timer；轮换子账号密钥并删除旧凭证；契约检查扩展至 20 项 | I-012 更新为 `DONE / STAGING_VERIFIED`；I-016 的完整邮件交付、业务对象存储与生产全路径仍归 B-011/I-004 |

@@ -11,7 +11,8 @@ Group=root
 UMask=0077
 EnvironmentFile=/etc/life/staging-migration.env
 EnvironmentFile=/etc/life/staging-backup.env
-ExecStart=/srv/life/current/scripts/postgres_backup.sh
+Environment=RCLONE_CONFIG=/etc/life/rclone.conf
+ExecStart=/srv/life/releases/current/scripts/postgres_backup.sh
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectHome=true

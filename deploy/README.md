@@ -136,9 +136,9 @@ npm run ops:request-log -- <trace-id>
 
 ## 6. I-012 加密 PostgreSQL 备份
 
-仓库已提供 `scripts/postgres_backup.sh`、`deploy/life-staging-postgres-backup.service.example`、`deploy/life-staging-postgres-backup.timer.example` 和 `deploy/staging-backup.env.example`。它们尚未部署到服务器，不应因为文件存在而将 I-012 标记为完成。
+仓库已提供 `scripts/postgres_backup.sh`、`deploy/life-staging-postgres-backup.service.example`、`deploy/life-staging-postgres-backup.timer.example` 和 `deploy/staging-backup.env.example`，并已在 staging 服务器完成真实验收与远端备份；生产环境仍需按相同步骤独立部署和验证，不能以 staging 结果替代。
 
-本地可先执行 `npm run postgres:backup-contract` 验证脚本语法、加密/校验/保留期/远端校验契约（17 项检查），该检查不连接真实数据库或 COS。
+本地可执行 `npm run postgres:backup-contract` 验证脚本语法、加密/校验/保留期/远端校验契约（20 项检查），该检查不连接真实数据库或 COS；staging 真实验收证据见 `outputs/2026-09-03-I-012-backup-prep-evidence.md`。
 
 备份服务的安全边界：
 
@@ -151,6 +151,7 @@ npm run ops:request-log -- <trace-id>
 首次部署前，在服务器上由 root 创建一个只用于备份的随机 GPG 口令文件、配置 root 私有 rclone 远端，并按以下方式安装 unit：
 
 ```bash
+sudo install -o root -g root -m 0600 /root/.config/rclone/rclone.conf /etc/life/rclone.conf
 sudo install -o root -g root -m 0600 deploy/staging-backup.env.example /etc/life/staging-backup.env
 sudo install -o root -g root -m 0644 deploy/life-staging-postgres-backup.service.example /etc/systemd/system/life-staging-postgres-backup.service
 sudo install -o root -g root -m 0644 deploy/life-staging-postgres-backup.timer.example /etc/systemd/system/life-staging-postgres-backup.timer
