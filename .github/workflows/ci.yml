@@ -75,6 +75,9 @@ jobs:
       - name: Release rollback drill contract
         run: npm run release:rollback-contract
 
+      - name: Staging health check contract
+        run: npm run health:contract
+
 
       - name: Web production build
         run: npm run web:build
