@@ -391,7 +391,7 @@ npm run production:preflight
 | I-008 | 导出 worker | `DONE / STAGING` | 独立进程、定时任务、导出文件和过期清理；staging systemd timer 每 5 分钟触发，真实导出 job 到 ready、生成 CSV，过期后 retention 删除；生产守护和告警仍待 I-011/I-016 |
 | I-009 | 保留期清理 worker | `DONE / STAGING` | 每日定时清理过期的原始账单、导出文件与 AI 记忆；staging 真实验证 1 个过期原始账单/1 个导出/1 个 AI 记忆均删除，未到期原始文件与正式源记录保留；生产告警仍待 I-011/I-016 |
 | I-010 | 请求日志和错误聚合 | `DONE / STAGING_LIVE` | 全部响应含 `x-request-id`/`trace_id`，错误响应稳定错误码；结构化日志不落请求体/Cookie/令牌/查询参数，IP、用户、家庭和邮箱哈希脱敏；PR #30 修复 journald 内嵌 JSON 检索；staging `v0.1.0-rc.7` 已重启并完成真实检索，证据见 `outputs/2026-09-03-I-010-request-log-repo-evidence.md` |
-| I-011 | 指标和告警 | `NOT_STARTED` | API、数据库、队列、COS、AI、磁盘和证书告警 |
+| I-011 | 指标和告警 | `PARTIAL / REPO_READY` | 健康检查脚本、systemd 计时器、独立数据库连接、可选 Webhook 告警、API/数据库/队列/COS/AI/磁盘/证书检查与 30 项仓库契约已就绪；staging 真实运行和 timer 触发仍待 live 验证 |
 | I-012 | PostgreSQL 备份 | `LOCAL_DONE / REMOTE_DEFERRED` | 本地加密备份、SHA-256、AES-256 GPG 解密、解包白名单与 `pg_restore --list` 已在服务器真实通过；rclone/COS 按既定范围跳过，`remote-verified=SKIPPED_LOCAL_DRILL` |
 | I-013 | 恢复演练 | `DONE` | 已从真实加密归档恢复至 `life_restore_20260903_0206`，6 张核心表源/目标计数、账本金额、家庭与成员数量一致；恢复时 31 张 FORCE RLS，当前库在 0015 后为 32 张 |
 | I-014 | 容量和压力测试 | `DONE` | 服务器本地 PostgreSQL + staging HTTPS 完整演练通过：隔离 3 家庭/3 并发/6 次跨租户 404；超大账单 12,583,217 字节、37,294 行解析成功、超限 400；导出队列 10 条 API 探测 + 60 条 DB 种子、worker 扫描/处理 50，抽样任务均 ready；AI 连接失败 503 后核心页健康、禁用后确定性 AI 可用；30,000 行慢查询种子 1,890ms、EXPLAIN 32ms、API 总览 1,672ms。详见 `outputs/2026-09-03-I-014-anomaly-staging-evidence-final.md` |

@@ -26,6 +26,8 @@
     "staging:load-contract": "node scripts/staging_load_test_contract.mjs",
     "staging:anomaly-drill": "node scripts/staging_anomaly_drill.mjs",
     "staging:anomaly-contract": "node scripts/staging_anomaly_drill_contract_test.mjs",
+    "health:check": "tsx scripts/life_health_check.ts",
+    "health:contract": "node scripts/life_health_contract_test.mjs",
     "release:rollback-contract": "node scripts/release_rollback_drill_contract.mjs",
     "web:dev": "vite --config ui/app/vite.config.ts",
     "ops:request-log": "node scripts/request_log_query.mjs",

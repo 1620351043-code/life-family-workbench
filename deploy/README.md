@@ -175,3 +175,39 @@ sudo systemctl enable --now life-staging-postgres-backup.timer
 ## 9. I-015 发布与回滚演练
 
 仓库提供 `scripts/release_rollback_drill.sh` 和 `npm run release:rollback-contract`（13 项静态契约检查）。当前脚本只做 fail-closed dry-run：校验当前/上一 Tag、祖先关系、不可变发布目录和 migration 记录，并生成 `0600` 的计划 JSON；默认不切换目录、不重启服务、不删除文件。真实切换与回滚仍必须由人工在 staging 按 `deploy/ROLLBACK.md` 执行并留档。
+
+## 10. I-011 健康检查与告警
+
+仓库已提供 `scripts/life_health_check.ts`、`deploy/life-staging-health.service.example`、`deploy/life-staging-health.timer.example` 和 `deploy/staging-health.env.example`。本地可先执行 `npm run health:contract` 验证静态契约；真实服务器必须在 `/etc/life/staging-health.env` 配置完成后执行一次并启用 timer。
+
+健康检查覆盖：
+
+- API：`/healthz` 状态与响应延迟；
+- PostgreSQL：连接、迁移数量、FORCE RLS 数量和关键表；
+- 队列：导入/导出待处理、租约超时、失败任务和原始账单清理积压；
+- 对象存储：生产 COS 配置（可选 live upload/read/delete smoke）或 staging 本地目录可读写；
+- AI：家庭 AI 连接 active/disabled/error 与密钥引用状态；
+- 磁盘：`/srv/life`、对象存储目录与 PostgreSQL 数据目录；
+- 证书：目标 HTTPS 证书有效期。
+
+监控边界：
+
+- 应用角色受 FORCE RLS 限制，不能查看全局队列，因此健康检查使用独立的 `LIFE_HEALTH_DATABASE_URL` 数据库连接，通常复用 root 私有的 migration/admin 连接；该连接不得进入应用服务或仓库。
+- 健康检查只输出聚合状态和检查项，不打印数据库连接串、COS 密钥、AI 密钥、账单内容、家庭标识或原始错误信息。
+- 非生产 staging 使用本地对象存储，不要求 COS 配置；生产环境缺少 COS 配置会直接判为 critical。
+- 未配置告警 Webhook 时，systemd 和 journald 保存失败记录；配置 Webhook 后，仅在健康状态非 ok 且 Webhook 为 HTTPS 时发送一次性聚合告警，默认不按每个失败项反复发送。
+
+服务器安装（`staging-health.env` 复制后必须把 `LIFE_HEALTH_DATABASE_URL` 替换为实际 monitoring/admin 连接）：
+
+```bash
+sudo install -o root -g root -m 0600 deploy/staging-health.env.example /etc/life/staging-health.env
+sudo install -o root -g root -m 0644 deploy/life-staging-health.service.example /etc/systemd/system/life-staging-health.service
+sudo install -o root -g root -m 0644 deploy/life-staging-health.timer.example /etc/systemd/system/life-staging-health.timer
+sudo systemctl daemon-reload
+sudo systemctl enable --now life-staging-health.timer
+sudo systemctl start life-staging-health.service
+systemctl status life-staging-health.service
+journalctl -u life-staging-health.service -n 30 --no-pager
+```
+
+首次执行必须确认输出全部检查项为 `ok` 或按预期区分 staging 本地对象存储；随后至少再观察一次 timer 触发记录，确认不是仅人工运行一次。
